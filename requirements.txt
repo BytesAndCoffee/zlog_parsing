@@ -1,0 +1,5 @@
+# Database
+PyMySQL>=1.0.2
+
+# Environment Variables
+python-dotenv>=0.19.1
