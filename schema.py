@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 from datetime import datetime
 from psconnect import Connection, get_db_connection
 
+
+
 def convert_type(mysql_type: str) -> str:
     """
     Converts MySQL data types to equivalent Python type hints.

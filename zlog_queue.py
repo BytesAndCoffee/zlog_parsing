@@ -4,6 +4,27 @@
 import time
 from typing import Optional
 from psconnect import get_db_connection, insert_into, replace_into, select_from, Connection
+import logging
+from logging.handlers import RotatingFileHandler
+
+def setup_logging() -> logging.Logger:
+    # Create a logger object
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)  # Set to debug level to capture all messages
+
+    # Create handlers for different log levels
+    error_handler = RotatingFileHandler('error.log', maxBytes=10000, backupCount=5)
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+    debug_handler = RotatingFileHandler('debug.log', maxBytes=10000, backupCount=5)
+    debug_handler.setLevel(logging.DEBUG)
+    debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+    # Add handlers to the logger
+    logger.addHandler(error_handler)
+    logger.addHandler(debug_handler)
+    return logger
 
 
 # Starting ID is 28000000
@@ -19,7 +40,7 @@ def mark_as_processed(conn: Connection, last_id: Optional[int]) -> None:
         replace_into(conn, {'id': 1, 'tid': last_id}, table="logs_id_track")
 
 
-def copy_new_logs(conn: Connection) -> int:
+def copy_new_logs(conn: Connection, logger: logging.Logger) -> int:
     # Initialize or retrieve the last processed/copied ID
     last_copied_id = get_last_processed_id(conn) or 28000000
 
@@ -36,25 +57,25 @@ def copy_new_logs(conn: Connection) -> int:
                     mark_as_processed(conn, highest_id_in_batch)
                     last_copied_id = highest_id_in_batch
                 except Exception as e:
-                    print(f"An error occurred while copying log {log['id']}: {e}")
+                    logger.error(f"An error occurred while copying log {log['id']}: {e}")
                     raise e
     except Exception as e:
-        print(f"An error occurred while copying logs: {e}")
+        logger.error(f"An error occurred while copying logs: {e}")
         raise e
     finally:
         return last_copied_id
 
 # Example usage
 def main() -> None:
-    conn = None
+    logger = setup_logging()
     try:
         conn = get_db_connection()
         while True:
-            last_copied_id = copy_new_logs(conn)
-            print(f"Last copied ID: {last_copied_id}")
+            last_copied_id = copy_new_logs(conn, logger)
+            logger.debug(f"Last copied ID: {last_copied_id}")
             time.sleep(10)  # Adjust the sleep time as necessary
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error("An error occurred: %s", e)
         raise e
         # Here, you could decide whether to retry the connection, or handle specific error types differently
     finally:
