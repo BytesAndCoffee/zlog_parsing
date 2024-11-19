@@ -97,6 +97,10 @@ logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_db_connection() -> Connection:
+    """
+    Establishes a connection to the database using environment variables for configuration.
+    Returns a pymysql.Connection object.
+    """
     try:
         conn = pymysql.connect(
             host=os.getenv("DB_HOST"),
@@ -115,6 +119,10 @@ def get_db_connection() -> Connection:
         
 
 def validate_schema(row: Row, table: str) -> bool:
+    """
+    Validates that a given row matches the schema for a specified table.
+    Returns True if the row is valid, False otherwise.
+    """
     schema = table_schemas[table]
     for column_spec in schema["columns"]:
         for col, specs in column_spec.items():
@@ -134,6 +142,10 @@ def validate_schema(row: Row, table: str) -> bool:
     return True
 
 def insert_into(conn: pymysql.Connection, row: Row, table: str) -> None:
+    """
+    Inserts a row into a specified table in the database.
+    Validates the row against the table schema before insertion.
+    """
     if not validate_schema(row, table):
         raise ValueError("Invalid schema")
     cols = ', '.join(f'`{col}`' for col in row.keys())
@@ -150,6 +162,10 @@ def insert_into(conn: pymysql.Connection, row: Row, table: str) -> None:
 
 
 def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
+    """
+    Replaces a row in a specified table in the database.
+    Validates the row against the table schema before replacement.
+    """
     if not validate_schema(row, table):
         raise ValueError("Invalid schema")
     cols = ', '.join(f'`{col}`' for col in row.keys())
@@ -165,6 +181,10 @@ def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
 
 
 def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc: bool = False) -> Optional[list[dict]]:
+    """
+    Selects rows from a specified table in the database where the id is greater than a base value.
+    Returns a list of dictionaries representing the selected rows.
+    """
     try:
         with conn.cursor() as cursor:
             cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
@@ -175,6 +195,9 @@ def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc
 
 
 def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
+    """
+    Deletes rows from a specified table in the database based on given conditions.
+    """
     if not conditions:
         logging.error("Conditions required for deletion to prevent accidental table wipe.")
         raise ValueError("Conditions required for deletion to prevent accidental table wipe.")

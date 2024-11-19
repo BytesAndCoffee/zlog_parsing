@@ -9,6 +9,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 def setup_logging() -> None:
+    """
+    Sets up logging for the script, including handlers for error and debug logs.
+    """
     # Create a logger object
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)  # Set to debug level to capture all messages
@@ -31,6 +34,9 @@ conn = get_db_connection()
 
 
 def parse_log(log: Row) -> None:
+    """
+    Parses a log entry and inserts it into the 'push' and 'event_log' tables if it meets certain criteria.
+    """
     if log['type'] in ['msg', 'action']\
           and log['nick'] != 'BytesAndCoffee'\
           and 'bytesandcoffee' in log['message'].lower()\
@@ -62,11 +68,17 @@ def parse_log(log: Row) -> None:
 
 
 def fetch_pm_table(conn: Connection) -> list[Row]:
+    """
+    Fetches all entries from the 'pm_table'.
+    """
     with conn.cursor() as cursor:
         cursor.execute("SELECT * FROM pm_table")
         return cursor.fetchall()
 
 def pm_update(log: Row) -> None:
+    """
+    Updates the 'pm_table' with a log entry if it meets certain criteria.
+    """
     pm_table = fetch_pm_table(conn)
     if log['window'] == log['nick'] and log['window'][0] != '#':
         if not any(row['window'] == log['window'] and row['nick'] == log['nick'] for row in pm_table):
@@ -77,6 +89,9 @@ def pm_update(log: Row) -> None:
 
 
 def main() -> None:
+    """
+    Main function that sets up logging, processes logs from the 'logs_queue' table, and updates the 'pm_table'.
+    """
     setup_logging()
     try:
         conn = get_db_connection()

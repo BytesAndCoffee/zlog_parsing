@@ -33,6 +33,14 @@ python parse_logs.py &
 python zlog_queue.py &
 ```
 
+## Documentation
+
+Comprehensive documentation for the project is available in the `docs` directory. The documentation includes detailed instructions for setup, usage, and descriptions of each module and function.
+
+- [Setup Instructions](docs/setup.md)
+- [Usage Instructions](docs/usage.md)
+- [Modules Documentation](docs/modules.md)
+
 ## License
 
 This project is licensed under the MIT License

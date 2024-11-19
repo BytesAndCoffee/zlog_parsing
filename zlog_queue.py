@@ -8,6 +8,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 def setup_logging() -> logging.Logger:
+    """
+    Sets up logging for the application, creating handlers for different log levels and adding them to the logger.
+    """
     # Create a logger object
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)  # Set to debug level to capture all messages
@@ -29,6 +32,9 @@ def setup_logging() -> logging.Logger:
 
 # Starting ID is 28000000
 def get_last_processed_id(conn: Connection) -> Optional[int]:
+    """
+    Fetches the last processed ID from the 'logs_id_track' table.
+    """
     with conn.cursor() as cursor:
         cursor.execute("SELECT tid FROM logs_id_track")
         result = cursor.fetchone()
@@ -36,11 +42,17 @@ def get_last_processed_id(conn: Connection) -> Optional[int]:
 
 
 def mark_as_processed(conn: Connection, last_id: Optional[int]) -> None:
+    """
+    Marks a log entry as processed by updating the 'logs_id_track' table.
+    """
     if last_id is not None:
         replace_into(conn, {'id': 1, 'tid': last_id}, table="logs_id_track")
 
 
 def copy_new_logs(conn: Connection, logger: logging.Logger) -> int:
+    """
+    Copies new log entries from the 'logs' table to the 'logs_queue' table and marks them as processed.
+    """
     # Initialize or retrieve the last processed/copied ID
     last_copied_id = get_last_processed_id(conn) or 28000000
 
@@ -67,6 +79,9 @@ def copy_new_logs(conn: Connection, logger: logging.Logger) -> int:
 
 # Example usage
 def main() -> None:
+    """
+    Main function that sets up logging, copies new logs, and marks them as processed in a loop.
+    """
     logger = setup_logging()
     try:
         conn = get_db_connection()
