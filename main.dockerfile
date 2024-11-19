@@ -9,8 +9,9 @@ COPY . /app
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-RUN chmod +x main.sh
 
+# Make the main.sh script executable
+RUN chmod +x main.sh
 
 # Run the application when the container launches
 CMD ["./main.sh"]

@@ -23,6 +23,9 @@ def convert_type(mysql_type: str) -> str:
     return mapping.get(mysql_type, 'Any')
 
 def fetch_schema(database: str, table: str, conn: Connection) -> Optional[Dict[str, Any]]:
+    """
+    Fetches the schema of a specified table from the database.
+    """
     query = f"""
     SELECT 
       JSON_OBJECT(
@@ -42,15 +45,18 @@ def fetch_schema(database: str, table: str, conn: Connection) -> Optional[Dict[s
     FROM DUAL;
     """
     with conn.cursor() as cursor:
-        cursor.execute(query, (database, table))
-        result = cursor.fetchone()
+        cursor.execute(query, (database, table))  # Execute the query with the provided database and table
+        result = cursor.fetchone()  # Fetch the result of the query
         if result:
-            schema = json.loads(result['complete_table_schema'])
+            schema = json.loads(result['complete_table_schema'])  # Load the JSON result into a dictionary
             return schema
         else:
             return None
 
 def print_schema(schema: Dict[str, Any], table_name: str) -> None:
+    """
+    Prints the schema of a specified table in a formatted manner.
+    """
     if schema:
         # Convert schema to the specified format
         converted_columns = []
@@ -67,13 +73,13 @@ def print_schema(schema: Dict[str, Any], table_name: str) -> None:
         columns_str = ',\n            '.join(converted_columns)
         output = f'"{table_name}": {{\n    "meta-schema": {{\n        "column": ["type", "nullable"]\n    }},\n    "columns": [\n            {columns_str}\n    ]\n}}'
         
-        print(output)
+        print(output)  # Print the formatted schema
     else:
         print(f"No schema found for table {table_name}.")
 
 # Example usage
 if __name__ == "__main__":
-    conn: Connection = get_db_connection()
-    # Example call with 'znc' as database and 'logs' as table
-    schema = fetch_schema('znc', 'pm_table', conn)
-    print_schema(schema, 'pm_table')
+    conn: Connection = get_db_connection()  # Get a database connection
+    # Example call with 'znc' as database and 'pm_table' as table
+    schema = fetch_schema('znc', 'pm_table', conn)  # Fetch the schema of the 'pm_table'
+    print_schema(schema, 'pm_table')  # Print the schema of the 'pm_table'
