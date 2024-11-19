@@ -102,6 +102,7 @@ def get_db_connection() -> Connection:
     Returns a pymysql.Connection object.
     """
     try:
+        # Connect to the database using environment variables
         conn = pymysql.connect(
             host=os.getenv("DB_HOST"),
             user=os.getenv("DB_USERNAME"),
@@ -114,6 +115,7 @@ def get_db_connection() -> Connection:
         )
         return conn
     except pymysql.MySQLError as e:
+        # Log any connection errors
         logging.error(f"Error connecting to the database: {e}")
         raise e
         
@@ -129,14 +131,17 @@ def validate_schema(row: Row, table: str) -> bool:
             col_type, nullable = specs
             if col not in row:
                 if not nullable:
+                    # Log an error if a non-nullable column is missing
                     logging.error(f"Column {col} is missing from the row")
                     return False
                 else:
                     continue  # It's okay for nullable columns to be missing
             if row[col] is None and not nullable:
+                # Log an error if a non-nullable column is null
                 logging.error(f"Column {col} cannot be null")
                 return False
             if row[col] is not None and not isinstance(row[col], col_type):
+                # Log an error if the column type does not match
                 logging.error(f"Column {col} must be of type {col_type.__name__}")
                 return False
     return True
@@ -152,10 +157,12 @@ def insert_into(conn: pymysql.Connection, row: Row, table: str) -> None:
     vals = ', '.join(f'%({col})s' for col in row.keys())
     sql = f'INSERT INTO `{table}` ({cols}) VALUES ({vals})'
     try:
+        # Execute the insert statement
         with conn.cursor() as cursor:
             cursor.execute(sql, row)
             conn.commit()
     except pymysql.MySQLError as e:
+        # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error inserting into {table}: {e}")
         raise e
@@ -172,10 +179,12 @@ def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
     vals = ', '.join(f'%({col})s' for col in row.keys())
     sql = f'REPLACE INTO `{table}` ({cols}) VALUES ({vals})'
     try:
+        # Execute the replace statement
         with conn.cursor() as cursor:
             cursor.execute(sql, row)
             conn.commit()
     except pymysql.MySQLError as e:
+        # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error replacing into {table}: {e}")
 
@@ -186,6 +195,7 @@ def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc
     Returns a list of dictionaries representing the selected rows.
     """
     try:
+        # Execute the select statement
         with conn.cursor() as cursor:
             cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
             return cursor.fetchall()
@@ -205,6 +215,7 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
     where_clause_parts = []
     params = []
     for column, value in conditions.items():
+        # Build the WHERE clause for the delete statement
         where_clause_parts.append(f"`{column}` = %s")
         params.append(value)
     
@@ -213,9 +224,11 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
     sql = f"DELETE FROM `{table}` WHERE {where_clause}"
     
     try:
+        # Execute the delete statement
         with conn.cursor() as cursor:
             cursor.execute(sql, params)
             conn.commit()
     except pymysql.MySQLError as e:
+        # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error deleting from {table}: {e}")
