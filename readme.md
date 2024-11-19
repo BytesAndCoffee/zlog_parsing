@@ -33,6 +33,22 @@ python parse_logs.py &
 python zlog_queue.py &
 ```
 
+## Docker Setup
+
+To build and run the Docker container for this project, follow these steps:
+
+1. **Build the Docker image:**
+   ```sh
+   docker build -t zlog_parsing .
+   ```
+
+2. **Run the Docker container:**
+   ```sh
+   docker run -d zlog_parsing
+   ```
+
+This will start the log parsing and queue management processes inside the Docker container.
+
 ## Documentation
 
 Comprehensive documentation for the project is available in the `docs` directory. The documentation includes detailed instructions for setup, usage, and descriptions of each module and function.
