@@ -12,10 +12,10 @@ Parses a log entry and inserts it into the `push` and `event_log` tables if cert
 Fetches all rows from the `pm_table`.
 
 ### pm_update
-Updates the `pm_table` with a new log entry if certain conditions are met.
+Updates the `pm_table` with a new log entry if certain conditions are met. Uses an in-memory cache to avoid duplicate lookups.
 
 ### main
-Main function that sets up logging, fetches logs from the `logs_queue`, processes them, and updates the `pm_table`.
+Main function that sets up logging, fetches logs from the `logs_queue` in batches, processes them, and updates the `pm_table`.
 
 ## psconnect.py
 
@@ -36,6 +36,9 @@ Selects rows from a specified table based on conditions.
 
 ### delete_from
 Deletes rows from a specified table based on conditions.
+
+### delete_many
+Deletes multiple rows from a specified table based on a list of IDs.
 
 ## zlog_queue.py
 
