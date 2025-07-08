@@ -99,7 +99,7 @@ def main() -> None:
         while True:
             logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
             if not logs:
-                time.sleep(10)  # Sleep for some time before checking for new logs
+                time.sleep(1)  # Sleep for some time before checking for new logs
                 continue
             for log in logs:
 

@@ -88,7 +88,7 @@ def main() -> None:
         while True:
             last_copied_id = copy_new_logs(conn, logger)
             logger.debug(f"Last copied ID: {last_copied_id}")
-            time.sleep(10)  # Adjust the sleep time as necessary
+            time.sleep(1)  # Adjust the sleep time as necessary
     except Exception as e:
         logger.error("An error occurred: %s", e)
         raise e
