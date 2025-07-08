@@ -1,7 +1,16 @@
 #!/home/michael/.pyenv/shims/python
 # parse_logs.py
 
-from psconnect import get_db_connection, insert_into, select_from, delete_from, Connection, Row
+from typing import Optional, Set, Tuple, List
+
+from psconnect import (
+    get_db_connection,
+    insert_into,
+    select_from,
+    delete_many,
+    Connection,
+    Row,
+)
 from zlog_queue import get_last_processed_id
 import time
 
@@ -30,7 +39,8 @@ def setup_logging() -> None:
     logger.addHandler(debug_handler)
 
 
-conn = get_db_connection()
+conn: Optional[Connection] = None
+pm_cache: Set[Tuple[str, str]] = set()
 
 
 def parse_log(log: Row) -> None:
@@ -67,7 +77,7 @@ def parse_log(log: Row) -> None:
         
 
 
-def fetch_pm_table(conn: Connection) -> list[Row]:
+def fetch_pm_table(conn: Connection) -> List[Row]:
     """
     Fetches all entries from the 'pm_table'.
     """
@@ -79,11 +89,13 @@ def pm_update(log: Row) -> None:
     """
     Updates the 'pm_table' with a log entry if it meets certain criteria.
     """
-    pm_table = fetch_pm_table(conn)
-    if log['window'] == log['nick'] and log['window'][0] != '#':
-        if not any(row['window'] == log['window'] and row['nick'] == log['nick'] for row in pm_table):
+    global pm_cache
+    if log['window'] == log['nick'] and not log['window'].startswith('#'):
+        key = (log['window'], log['nick'])
+        if key not in pm_cache:
             try:
                 insert_into(conn, log, 'pm_table')
+                pm_cache.add(key)
             except Exception as e:
                 logging.error("Failed to insert log %s into pm_table: %s", log["id"], e)
 
@@ -92,25 +104,29 @@ def main() -> None:
     """
     Main function that sets up logging, processes logs from the 'logs_queue' table, and updates the 'pm_table'.
     """
+    global conn, pm_cache
     setup_logging()
     try:
         conn = get_db_connection()
+        pm_cache = {(row['window'], row['nick']) for row in fetch_pm_table(conn)}
         last_processed_id = get_last_processed_id(conn) or 28000000
+        batch_size = 100
         while True:
-            logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
+            logs = select_from(conn, "logs_queue", last_processed_id, desc=False, limit=batch_size)
             if not logs:
-                time.sleep(10)  # Sleep for some time before checking for new logs
+                time.sleep(1)
                 continue
+            ids_to_delete = []
             for log in logs:
-
                 parse_log(log)
                 pm_update(log)
-                try:
-                    delete_from(conn, 'logs_queue', {"id": log["id"]})
-                except Exception as e:
-                    logging.error("Failed to delete log %s from logs_queue: %s", log["id"], e)
-                print(f"Processed log {log['id']}")
+                ids_to_delete.append(log["id"])
                 last_processed_id = log["id"]
+            try:
+                delete_many(conn, 'logs_queue', ids_to_delete)
+            except Exception as e:
+                logging.error("Failed to delete logs from logs_queue: %s", e)
+            print(f"Processed up to log {last_processed_id}")
     except Exception as e:
         logging.error("An error occurred: %s", e)
         print(f"An error occurred: {e}")
@@ -118,3 +134,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

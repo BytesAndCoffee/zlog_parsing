@@ -2,7 +2,7 @@
 # psconnect.py
 
 import os, pymysql, pymysql.cursors
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
@@ -92,7 +92,7 @@ table_schemas = {
     }
 }
 
-Row = dict[str, str | int]
+Row = Dict[str, Any]
 logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -189,15 +189,42 @@ def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
         logging.error(f"Error replacing into {table}: {e}")
 
 
-def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc: bool = False) -> Optional[list[dict]]:
-    """
-    Selects rows from a specified table in the database where the id is greater than a base value.
-    Returns a list of dictionaries representing the selected rows.
+def select_from(
+    conn: pymysql.Connection,
+    table: str,
+    base: int = 28000000,
+    desc: bool = False,
+    limit: Optional[int] = None,
+) -> Optional[List[Dict[str, Any]]]:
+    """Select rows from ``table`` where ``id`` is greater than ``base``.
+
+    Parameters
+    ----------
+    conn : Connection
+        Database connection.
+    table : str
+        Table name to query.
+    base : int, optional
+        Minimum ``id`` to select from, by default ``28000000``.
+    desc : bool, optional
+        Order results descending when ``True``.
+    limit : Optional[int], optional
+        Maximum number of rows to return. ``None`` for no limit.
+
+    Returns
+    -------
+    Optional[List[Dict[str, Any]]]
+        List of rows returned from the query or ``None`` on error.
     """
     try:
         # Execute the select statement
         with conn.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
+            limit_clause = f" LIMIT {limit}" if limit else ""
+            sql = (
+                f"SELECT * FROM {table} WHERE id > {base} "
+                f"ORDER BY id {'DESC' if desc else 'ASC'}{limit_clause}"
+            )
+            cursor.execute(sql)
             return cursor.fetchall()
     except pymysql.MySQLError as e:
         logging.error(f"Error selecting from {table}: {e}")
@@ -232,3 +259,21 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
         # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error deleting from {table}: {e}")
+        raise e
+
+
+def delete_many(conn: pymysql.Connection, table: str, ids: List[int]) -> None:
+    """Delete multiple rows from ``table`` by ``id``."""
+    if not ids:
+        return
+    placeholders = ",".join(["%s"] * len(ids))
+    sql = f"DELETE FROM `{table}` WHERE id IN ({placeholders})"
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(sql, ids)
+            conn.commit()
+    except pymysql.MySQLError as e:
+        conn.rollback()
+        logging.error(f"Error deleting many from {table}: {e}")
+        raise e
+
