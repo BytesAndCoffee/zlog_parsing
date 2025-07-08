@@ -1,6 +1,7 @@
 #!/home/michael/.pyenv/shims/python
 # parse_logs.py
 
+
 from psconnect import (
     get_db_connection,
     insert_into,
@@ -37,8 +38,10 @@ def setup_logging() -> None:
     logger.addHandler(debug_handler)
 
 
-conn: Connection | None = None
-pm_cache: set[tuple[str, str]] = set()
+
+conn: Optional[Connection] = None
+pm_cache: Set[Tuple[str, str]] = set()
+
 
 
 def parse_log(log: Row) -> None:
@@ -75,7 +78,7 @@ def parse_log(log: Row) -> None:
         
 
 
-def fetch_pm_table(conn: Connection) -> list[Row]:
+def fetch_pm_table(conn: Connection) -> List[Row]:
     """
     Fetches all entries from the 'pm_table'.
     """

@@ -2,7 +2,7 @@
 # psconnect.py
 
 import os, pymysql, pymysql.cursors
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
@@ -92,7 +92,7 @@ table_schemas = {
     }
 }
 
-Row = dict[str, str | int]
+Row = Dict[str, Any]
 logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -195,7 +195,7 @@ def select_from(
     base: int = 28000000,
     desc: bool = False,
     limit: Optional[int] = None,
-) -> Optional[list[dict]]:
+) -> Optional[List[Dict[str, Any]]]:
     """Select rows from ``table`` where ``id`` is greater than ``base``.
 
     Parameters
@@ -213,7 +213,7 @@ def select_from(
 
     Returns
     -------
-    Optional[list[dict]]
+    Optional[List[Dict[str, Any]]]
         List of rows returned from the query or ``None`` on error.
     """
     try:
@@ -262,7 +262,8 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
         raise e
 
 
-def delete_many(conn: pymysql.Connection, table: str, ids: list[int]) -> None:
+def delete_many(conn: pymysql.Connection, table: str, ids: List[int]) -> None:
+
     """Delete multiple rows from ``table`` by ``id``."""
     if not ids:
         return
