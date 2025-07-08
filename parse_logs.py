@@ -1,7 +1,6 @@
 #!/home/michael/.pyenv/shims/python
 # parse_logs.py
 
-from typing import Optional, Set, Tuple, List
 
 from psconnect import (
     get_db_connection,
@@ -39,8 +38,10 @@ def setup_logging() -> None:
     logger.addHandler(debug_handler)
 
 
+
 conn: Optional[Connection] = None
 pm_cache: Set[Tuple[str, str]] = set()
+
 
 
 def parse_log(log: Row) -> None:

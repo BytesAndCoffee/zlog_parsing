@@ -263,6 +263,7 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
 
 
 def delete_many(conn: pymysql.Connection, table: str, ids: List[int]) -> None:
+
     """Delete multiple rows from ``table`` by ``id``."""
     if not ids:
         return
