@@ -11,7 +11,7 @@ from psconnect import (
     fetch_users
 )
 from zlog_queue import get_last_processed_id
-from rules import match_rule, fetch_rules
+from rules import match_rule, fetch_rules, validate_rules
 
 import json
 import time
@@ -30,9 +30,6 @@ def serialize_log_safe(log: dict) -> str:
 
 
 def setup_logging() -> None:
-    """
-    Sets up logging for the script, including handlers for error and debug logs.
-    """
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
@@ -40,7 +37,7 @@ def setup_logging() -> None:
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
-    debug_handler = RotatingFileHandler('debug.log', maxBytes=10000, backupCount=5)
+    debug_handler = RotatingFileHandler('debug.log', maxBytes=1000000, backupCount=10)
     debug_handler.setLevel(logging.DEBUG)
     debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
@@ -49,10 +46,6 @@ def setup_logging() -> None:
 
 
 def parse_log(log: Row) -> None:
-    """
-    Parses a log entry and inserts it into the 'push' and 'event_log' tables
-    if it matches any rule for any user.
-    """
     if log["type"] not in ["msg", "action"]:
         logging.debug(f"Skipping log {log['id']} due to unsupported type: {log['type']}")
         return
@@ -61,8 +54,9 @@ def parse_log(log: Row) -> None:
 
     for recipient, rules in user_rules.items():
         for rule in rules:
+            logging.debug(f"Evaluating rule for {recipient} on log {log['id']}: {json.dumps(rule)}")
             if match_rule(rule, log):
-                logging.debug(f"Matched rule for user {recipient}: {rule}")
+                logging.debug(f"Rule matched for user {recipient} on log {log['id']}")
                 matched_any = True
                 row = {
                     "id": log["id"],
@@ -89,9 +83,6 @@ def parse_log(log: Row) -> None:
 
 
 def fetch_pm_table() -> list[Row]:
-    """
-    Fetches all entries from the 'pm_table'.
-    """
     try:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM pm_table")
@@ -102,9 +93,6 @@ def fetch_pm_table() -> list[Row]:
 
 
 def maybe_track_pm(log: Row, pm_cache: set[tuple[str, str]]) -> None:
-    """
-    If the log is a DM and hasn't been seen before, insert into pm_table and update cache.
-    """
     if log["window"] == log["nick"] and not log["window"].startswith('#'):
         key = (log["window"], log["nick"])
         if key not in pm_cache:
@@ -117,9 +105,6 @@ def maybe_track_pm(log: Row, pm_cache: set[tuple[str, str]]) -> None:
 
 
 def main() -> None:
-    """
-    Main function that processes logs from 'logs_queue', handles rule matching and DM tracking.
-    """
     setup_logging()
     try:
         global conn, users, user_rules
@@ -132,10 +117,16 @@ def main() -> None:
         last_processed_id = get_last_processed_id(conn) or 28000000
 
         users = fetch_users(conn)
-        if not users:
-            logging.warning("No users loaded from DB.")
-        user_rules = {user: fetch_rules(conn, user) for user in users}
-        logging.debug(f"Loaded rules for users: {list(user_rules.keys())}")
+        logging.debug(f"Fetched users: {users}")
+        user_rules = {}
+
+        for user in users:
+            rules = fetch_rules(conn, user)
+            logging.debug(f"Rules loaded for {user}: {json.dumps(rules, indent=2)}")
+            if validate_rules(rules):
+                user_rules[user] = rules
+            else:
+                logging.warning(f"Rules for {user} failed validation")
 
         while True:
             logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
