@@ -1,5 +1,9 @@
+# rules.py
+
 from typing import Any
 import logging
+import json
+
 from psconnect import fetch_user, Connection
 
 Rule = dict[str, Any]
@@ -7,6 +11,9 @@ Row = dict[str, Any]
 
 
 def validate_rule(rule: Rule) -> bool:
+    """
+    Validates the structure of a single hotword rule dict.
+    """
     required_keys = {"type", "match"}
     if not all(k in rule for k in required_keys):
         logging.debug(f"Rule missing required keys: {rule}")
@@ -33,10 +40,16 @@ def validate_rule(rule: Rule) -> bool:
 
 
 def validate_rules(rules: list[Rule]) -> bool:
+    """
+    Validates a list of rule dicts using validate_rule().
+    """
     return all(validate_rule(rule) for rule in rules)
 
 
 def match_rule(rule: Rule, row: Row) -> bool:
+    """
+    Evaluates whether a log row matches a given rule.
+    """
     msg = row.get("message", "")
     window = row.get("window", "")
     sender = row.get("nick", "")
@@ -47,42 +60,47 @@ def match_rule(rule: Rule, row: Row) -> bool:
     match_cmp = match_val if case_sensitive else match_val.lower()
 
     if rule["type"] == "pm":
+        # PM rules only match if the window is a PM and the sender matches
         if window == sender and not window.startswith('#'):
-            logging.debug(f"PM rule matched for window {window} and sender {sender}")
             return True
         else:
             return False
 
+    # Check 'not_if' conditions first
     not_if = rule.get("not_if", {})
     if not_if:
         matches_all = True
         for key, val in not_if.items():
             if key == "contains":
-                if val in msg:
-                    logging.debug(f"Rule {rule} skipped due to not_if contains match")
-                    return False
-            elif row.get(key) == val:
-                logging.debug(f"Rule {rule} skipped due to not_if key={key} val={val}")
-                return False
-
-    only_if = rule.get("only_if", {})
-    for key, val in only_if.items():
-        if key == "contains":
-            if val not in msg:
-                logging.debug(f"Rule {rule} failed only_if contains: {val}")
-                return False
-        elif row.get(key) != val:
-            logging.debug(f"Rule {rule} failed only_if {key}={val}")
+                if val not in msg:
+                    matches_all = False
+                    break
+            elif row.get(key) != val:
+                matches_all = False
+                break
+        if matches_all:
             return False
 
-    if match_cmp not in msg_cmp:
-        logging.debug(f"Rule {rule} did not match substring in message")
-        return False
+    # Then check 'only_if' conditions
+    for key, val in rule.get("only_if", {}).items():
+        if key == "contains" and val in msg:
+            return True
+        if row.get(key) != val:
+            return False
 
+    # Finally evaluate match
+    if match_cmp not in msg_cmp:
+        return False
+    logging.debug(f"Rule matched: {rule} for log {row['id']}")
     return True
 
 
 def fetch_rules(conn: Connection, nickname: str) -> list[dict]:
+    """
+    Fetches the list of hotword rules for a given user by calling fetch_user().
+    Assumes 'hotwords' is a JSON column containing a list of rule dicts.
+    Returns an empty list if the user is not found or an error occurs.
+    """
     try:
         user = fetch_user(conn, nickname)
         if not user:
@@ -90,10 +108,17 @@ def fetch_rules(conn: Connection, nickname: str) -> list[dict]:
             return []
 
         rules = user.get("hotwords")
+        if isinstance(rules, str):
+            try:
+                rules = json.loads(rules)
+            except json.JSONDecodeError as e:
+                logging.error(f"Hotwords for {nickname} could not be decoded: {e}")
+                return []
+
         if isinstance(rules, list):
             return rules
         else:
-            logging.error(f"Hotwords for {nickname} are not a list: {rules}")
+            logging.error(f"Hotwords for {nickname} are not a list after parsing: {rules}")
             return []
     except Exception as e:
         logging.error(f"Failed to fetch rules for {nickname}: {e}")
