@@ -67,3 +67,7 @@ Determines whether a log entry matches a given rule.
 
 ### fetch_rules
 Retrieves a user's hotword rules from the database.
+
+### Rule JSON Structure
+Rules for each user are stored in the `users.hotwords` JSON column as a list of rule objects.
+See [rules.md](rules.md) for a full description of the filtering rule format used by `parse_logs.py`.
