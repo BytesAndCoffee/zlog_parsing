@@ -40,3 +40,22 @@ Install dependencies listed in `requirements.txt` using `pip install -r requirem
 - `parse_logs.py` reads logs from `logs_queue`, applies hotword rules and writes matching entries to `push` and `event_log`.
 - `zlog_queue.py` monitors the `logs` table and enqueues new log lines for processing.
 - `rules.py` contains helper functions for validating and evaluating the hotword rules stored for each user.
+
+## Filtering Rules
+
+Users define filtering rules as JSON objects stored in the `users.hotwords` column.
+The value is a JSON **array** of rule objects even when only a single rule is defined.
+Each rule determines whether a log line should be delivered to that user. See
+[docs/rules.md](rules.md) for the full schema. A simple example:
+
+```json
+[
+  {
+    "type": "substring",
+    "match": "error",
+    "only_if": {"window": "#general"}
+  }
+]
+```
+
+The parser evaluates these rules for every log line and queues matches into the `push` table.
