@@ -17,11 +17,17 @@ import json
 import time
 import logging
 from logging.handlers import RotatingFileHandler
+from datetime import datetime
 
 # Global shared state
 conn: Connection
 users: list[str]
 user_rules: dict[str, list[dict]]
+
+
+def serialize_log_safe(log: dict) -> str:
+    return json.dumps(log, default=lambda o: o.isoformat() if isinstance(o, datetime) else str(o))
+
 
 def setup_logging() -> None:
     """
@@ -79,7 +85,7 @@ def parse_log(log: Row) -> None:
                     if "Duplicate entry" in str(e):
                         logging.debug("Duplicate entry: %s", log["id"])
     if not matched_any:
-        logging.debug("No rule matched for log %s\n\n  %s", log["id"], json.dumps(log, indent=2))
+        logging.debug("No rule matched for log %s", serialize_log_safe(log))
 
 
 def fetch_pm_table() -> list[Row]:
