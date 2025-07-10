@@ -66,10 +66,18 @@ def match_rule(rule: Rule, row: Row) -> bool:
             return False
 
     # Check 'not_if' conditions first
-    for key, val in rule.get("not_if", {}).items():
-        if key == "contains" and val in msg:
-            return False
-        if row.get(key) == val:
+    not_if = rule.get("not_if", {})
+    if not_if:
+        matches_all = True
+        for key, val in not_if.items():
+            if key == "contains":
+                if val not in msg:
+                    matches_all = False
+                    break
+            elif row.get(key) != val:
+                matches_all = False
+                break
+        if matches_all:
             return False
 
     # Then check 'only_if' conditions
