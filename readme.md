@@ -36,6 +36,12 @@ A simple container definition is provided in `main.dockerfile`. Build and run wi
 docker build -f main.dockerfile -t zlog_parsing .
 docker run -d zlog_parsing
 ```
+## Filtering Rules
+
+Each user record contains a `hotwords` JSON column storing a **list** of rule objects.
+Rules decide which log lines are queued for that user. Even a single rule must be
+wrapped in a JSON array. See [docs/rules.md](docs/rules.md) for details.
+
 
 ## Documentation
 
@@ -44,6 +50,7 @@ Additional documentation and module descriptions can be found in the `docs` dire
 - [Setup Instructions](docs/setup.md)
 - [Usage Instructions](docs/usage.md)
 - [Modules Documentation](docs/modules.md)
+- [Filtering Rules](docs/rules.md)
 
 ## License
 
