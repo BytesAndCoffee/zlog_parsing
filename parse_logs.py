@@ -127,7 +127,7 @@ def main() -> None:
                 user_rules[user] = rules
             else:
                 logging.warning(f"Rules for {user} failed validation")
-
+        count: int = 0
         while True:
             logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
             if not logs:
@@ -143,6 +143,20 @@ def main() -> None:
                     logging.error("Failed to delete log %s from logs_queue: %s", log["id"], e)
                 print(f"Processed log {log['id']}")
                 last_processed_id = log["id"]
+            if count % 100 == 99:
+                logging.debug(f"Processed {count + 1} logs, updating users and rules")
+                users = fetch_users(conn)
+                logging.debug(f"Fetched users: {users}")
+                user_rules = {}
+
+                for user in users:
+                    rules = fetch_rules(conn, user)
+                    logging.debug(f"Rules loaded for {user}: {json.dumps(rules, indent=2)}")
+                    if validate_rules(rules):
+                        user_rules[user] = rules
+                    else:
+                        logging.warning(f"Rules for {user} failed validation")
+            count += 1
 
     except Exception as e:
         logging.error("An error occurred: %s", e)

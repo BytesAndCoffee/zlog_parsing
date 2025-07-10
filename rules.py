@@ -71,6 +71,7 @@ def match_rule(rule: Rule, row: Row) -> bool:
 
         msg_cmp = msg if case_sensitive else msg.lower()
         match_cmp = match_val if case_sensitive else match_val.lower()
+        nick_cmp = sender if case_sensitive else sender.lower()
 
         # 'not_if' logic - ALL conditions must be satisfied to suppress
         not_if = rule.get("not_if", {})
@@ -109,7 +110,7 @@ def match_rule(rule: Rule, row: Row) -> bool:
                     return False
 
         # Final substring match
-        if match_cmp in msg_cmp:
+        if match_cmp in msg_cmp and not match_cmp in nick_cmp:
             logging.debug(f"Rule matched log {row.get('id')} with match='{match_val}'")
             return True
         else:
