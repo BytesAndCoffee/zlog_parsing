@@ -52,49 +52,54 @@ def match_rule(rule: Rule, row: Row) -> bool:
     """
     Evaluates whether a log row matches a given rule.
     """
-    msg = row.get("message", "")
-    window = row.get("window", "")
-    sender = row.get("nick", "")
-    case_sensitive = rule.get("case_sensitive", False)
-    match_val = rule["match"]
+    try:
+        msg = row.get("message", "")
+        window = row.get("window", "")
+        sender = row.get("nick", "")
 
-    msg_cmp = msg if case_sensitive else msg.lower()
-    match_cmp = match_val if case_sensitive else match_val.lower()
+        logging.debug(f"Evaluating rule on log {row.get('id')}: {rule}")
 
-    if rule["type"] == "pm":
-        # PM rules only match if the window is a PM and the sender matches
-        if window == sender and not window.startswith('#'):
+        if rule["type"] == "pm":
+            is_pm = window == sender and not window.startswith("#")
+            logging.debug(f"PM rule evaluation: window={window}, sender={sender}, result={is_pm}")
+            return is_pm
+
+        # Substring rule
+        match_val = rule.get("match", "")
+        case_sensitive = rule.get("case_sensitive", False)
+
+        msg_cmp = msg if case_sensitive else msg.lower()
+        match_cmp = match_val if case_sensitive else match_val.lower()
+
+        # 'not_if' conditions
+        for key, val in rule.get("not_if", {}).items():
+            if key == "contains" and val in msg:
+                logging.debug(f"Rule skipped by not_if.contains: {val}")
+                return False
+            if key != "contains" and row.get(key) == val:
+                logging.debug(f"Rule skipped by not_if[{key}]: {val}")
+                return False
+
+        # 'only_if' conditions
+        for key, val in rule.get("only_if", {}).items():
+            if key == "contains" and val not in msg:
+                logging.debug(f"Rule skipped by only_if.contains (not found): {val}")
+                return False
+            if key != "contains" and row.get(key) != val:
+                logging.debug(f"Rule skipped by only_if[{key}]: {val} != {row.get(key)}")
+                return False
+
+        if match_cmp in msg_cmp:
+            logging.debug(f"Rule matched log {row.get('id')} with match='{match_val}'")
             return True
         else:
+            logging.debug(f"Substring '{match_val}' not found in message")
             return False
 
-    # Check 'not_if' conditions first
-    not_if = rule.get("not_if", {})
-    if not_if:
-        matches_all = True
-        for key, val in not_if.items():
-            if key == "contains":
-                if val not in msg:
-                    matches_all = False
-                    break
-            elif row.get(key) != val:
-                matches_all = False
-                break
-        if matches_all:
-            return False
-
-    # Then check 'only_if' conditions
-    for key, val in rule.get("only_if", {}).items():
-        if key == "contains" and val in msg:
-            return True
-        if row.get(key) != val:
-            return False
-
-    # Finally evaluate match
-    if match_cmp not in msg_cmp:
+    except Exception as e:
+        logging.error(f"Error evaluating rule {rule} on row {row.get('id')}: {e}")
         return False
-    logging.debug(f"Rule matched: {rule} for log {row['id']}")
-    return True
+
 
 
 def fetch_rules(conn: Connection, nickname: str) -> list[dict]:
