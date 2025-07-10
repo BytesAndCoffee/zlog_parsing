@@ -47,30 +47,39 @@ def parse_log(log: Row) -> None:
     if it matches any rule for any user.
     """
     if log["type"] not in ["msg", "action"]:
+        logging.debug(f"Skipping log {log['id']} due to unsupported type: {log['type']}")
         return
 
+    matched_any = False
+
     for recipient, rules in user_rules.items():
-        if any(match_rule(rule, log) for rule in rules):
-            row = {
-                "id": log["id"],
-                "user": log["user"],
-                "network": log["network"],
-                "window": log["window"],
-                "type": log["type"],
-                "nick": log["nick"],
-                "message": log["message"],
-                "recipient": recipient
-            }
-            try:
-                insert_into(conn, row, 'push')
-            except Exception as e:
-                logging.error("Failed to insert log %s into push: %s", log["id"], e)
-            try:
-                insert_into(conn, row, 'event_log')
-            except Exception as e:
-                logging.error("Failed to insert log %s into event_log: %s", log["id"], e)
-                if "Duplicate entry" in str(e):
-                    logging.debug("Duplicate entry: %s", log["id"])
+        for rule in rules:
+            if match_rule(rule, log):
+                logging.debug(f"Matched rule for user {recipient}: {rule}")
+                row = {
+                    "id": log["id"],
+                    "user": log["user"],
+                    "network": log["network"],
+                    "window": log["window"],
+                    "type": log["type"],
+                    "nick": log["nick"],
+                    "message": log["message"],
+                    "recipient": recipient
+                }
+                try:
+                    insert_into(conn, row, 'push')
+                except Exception as e:
+                    logging.error("Failed to insert log %s into push: %s", log["id"], e)
+                try:
+                    insert_into(conn, row, 'event_log')
+                except Exception as e:
+                    logging.error("Failed to insert log %s into event_log: %s", log["id"], e)
+                    if "Duplicate entry" in str(e):
+                        logging.debug("Duplicate entry: %s", log["id"])
+                matched_any = True
+                break  # stop at first matching rule for user
+    if not matched_any:
+        logging.debug(f"No rule matched for log {log['id']}")
 
 
 def fetch_pm_table() -> list[Row]:
@@ -96,9 +105,9 @@ def maybe_track_pm(log: Row, pm_cache: set[tuple[str, str]]) -> None:
             try:
                 insert_into(conn, log, "pm_table")
                 pm_cache.add(key)
+                logging.debug(f"Tracked new PM: {key}")
             except Exception as e:
                 logging.error("Failed to insert log %s into pm_table: %s", log["id"], e)
-
 
 
 def main() -> None:
@@ -109,12 +118,18 @@ def main() -> None:
     try:
         global conn, users, user_rules
         conn = get_db_connection()
+
         pm_cache: set[tuple[str, str]] = set(
             (row["window"], row["nick"]) for row in fetch_pm_table()
         )
+
         last_processed_id = get_last_processed_id(conn) or 28000000
+
         users = fetch_users(conn)
+        if not users:
+            logging.warning("No users loaded from DB.")
         user_rules = {user: fetch_rules(conn, user) for user in users}
+        logging.debug(f"Loaded rules for users: {list(user_rules.keys())}")
 
         while True:
             logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
