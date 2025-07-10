@@ -2,19 +2,22 @@
 # psconnect.py
 
 import os, pymysql, pymysql.cursors
-from typing import Optional
+from typing import Optional, Union, Any
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
+
+from pymysql.cursors import Cursor
+
 load_dotenv()
 
 Connection = pymysql.Connection
 table_schemas = {
-    "logs": {
+    "logs":          {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
+        "columns":     [
             {"created_at": [datetime, False]},
             {"id": [int, False]},
             {"message": [str, True]},
@@ -29,15 +32,15 @@ table_schemas = {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
+        "columns":     [
             {"id": [int, False]}
         ]
     },
-    "logs_queue": {
+    "logs_queue":    {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
+        "columns":     [
             {"id": [int, False]},
             {"created_at": [datetime, False]},
             {"user": [str, True]},
@@ -48,11 +51,11 @@ table_schemas = {
             {"message": [str, True]}
         ]
     },
-    "event_log": {
+    "event_log":     {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
+        "columns":     [
             {"id": [int, False]},
             {"message": [str, True]},
             {"network": [str, False]},
@@ -62,11 +65,11 @@ table_schemas = {
             {"window": [str, False]}
         ]
     },
-    "push": {
+    "push":          {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
+        "columns":     [
             {"id": [int, False]},
             {"message": [str, True]},
             {"network": [str, False]},
@@ -76,25 +79,22 @@ table_schemas = {
             {"window": [str, False]}
         ]
     },
-    "event_log": {
+    "users":         {
         "meta-schema": {
             "column": ["type", "nullable"]
         },
-        "columns": [
-            {"id": [int, False]},
-            {"message": [str, True]},
-            {"network": [str, False]},
-            {"nick": [str, True]},
-            {"type": [str, False]},
-            {"user": [str, True]},
-            {"window": [str, False]}
+        "columns":     [
+            {"nickname": [str, False]},
+            {"telegram_chat_id": [int, True]},
+            {"hotwords": [list[dict], True]}
         ]
     }
 }
 
-Row = dict[str, str | int]
-logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', 
+Row = dict[str, Union[str, int]]
+logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def get_db_connection() -> Connection:
     """
@@ -118,7 +118,7 @@ def get_db_connection() -> Connection:
         # Log any connection errors
         logging.error(f"Error connecting to the database: {e}")
         raise e
-        
+
 
 def validate_schema(row: Row, table: str) -> bool:
     """
@@ -145,6 +145,26 @@ def validate_schema(row: Row, table: str) -> bool:
                 logging.error(f"Column {col} must be of type {col_type.__name__}")
                 return False
     return True
+
+
+def validate_rule(rule: dict) -> bool:
+    """
+    Validates the structure of a single hotword rule dict.
+    """
+    required_keys = {"type", "match"}
+    if not all(k in rule for k in required_keys):
+        return False
+    if rule["type"] != "substring":
+        return False
+    if not isinstance(rule["match"], str):
+        return False
+    if "case_sensitive" in rule and not isinstance(rule["case_sensitive"], bool):
+        return False
+    for cond_type in ("only_if", "not_if"):
+        if cond_type in rule and not isinstance(rule[cond_type], dict):
+            return False
+    return True
+
 
 def insert_into(conn: pymysql.Connection, row: Row, table: str) -> None:
     """
@@ -196,6 +216,7 @@ def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc
     """
     try:
         # Execute the select statement
+        cursor: Cursor | Any
         with conn.cursor() as cursor:
             cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
             return cursor.fetchall()
@@ -211,18 +232,18 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
     if not conditions:
         logging.error("Conditions required for deletion to prevent accidental table wipe.")
         raise ValueError("Conditions required for deletion to prevent accidental table wipe.")
-    
+
     where_clause_parts = []
     params = []
     for column, value in conditions.items():
         # Build the WHERE clause for the delete statement
         where_clause_parts.append(f"`{column}` = %s")
         params.append(value)
-    
+
     where_clause = " AND ".join(where_clause_parts)
-    
+
     sql = f"DELETE FROM `{table}` WHERE {where_clause}"
-    
+
     try:
         # Execute the delete statement
         with conn.cursor() as cursor:
@@ -232,3 +253,36 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
         # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error deleting from {table}: {e}")
+
+
+def fetch_users(conn: pymysql.Connection) -> list[str]:
+    """
+    Fetches all user nicknames from the 'users' table.
+    Returns a list of nicknames.
+    """
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT nickname FROM users")
+            # Fetch all nicknames from the users table
+            rows: list[dict[str, str]] = cursor.fetchall()
+            if not rows:
+                logging.debug("No users found in the database.")
+                return []
+            return [row['nickname'] for row in rows]
+    except Exception as e:
+        logging.error(f"Failed to fetch users: {e}")
+        return []
+
+def fetch_user(conn: pymysql.Connection, nickname: str) -> Optional[dict]:
+    """
+    Fetches the full user record from the 'users' table by nickname.
+    """
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE nickname = %s", (nickname,))
+            return cursor.fetchone()
+    except Exception as e:
+        logging.error(f"Failed to fetch user {nickname}: {e}")
+        return None
+
+
