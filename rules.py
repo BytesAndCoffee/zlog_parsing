@@ -9,22 +9,23 @@ from psconnect import fetch_user, Connection
 Rule = dict[str, Any]
 Row = dict[str, Any]
 
-
 def validate_rule(rule: Rule) -> bool:
     """
     Validates the structure of a single hotword rule dict.
     """
-    required_keys = {"type", "match"}
-    if not all(k in rule for k in required_keys):
-        logging.debug(f"Rule missing required keys: {rule}")
+    if "type" not in rule:
+        logging.debug(f"Rule missing 'type': {rule}")
         return False
 
-    if rule["type"] not in ["substring", "pm"]:
+    if rule["type"] == "substring":
+        if "match" not in rule or not isinstance(rule["match"], str):
+            logging.debug(f"Substring rule missing or invalid 'match': {rule}")
+            return False
+    elif rule["type"] == "pm":
+        # pm rules are valid without match
+        return True
+    else:
         logging.debug(f"Unsupported rule type: {rule['type']}")
-        return False
-
-    if not isinstance(rule["match"], str):
-        logging.debug(f"Rule 'match' is not a string: {rule['match']}")
         return False
 
     if "case_sensitive" in rule and not isinstance(rule["case_sensitive"], bool):
@@ -37,6 +38,7 @@ def validate_rule(rule: Rule) -> bool:
             return False
 
     return True
+
 
 
 def validate_rules(rules: list[Rule]) -> bool:
