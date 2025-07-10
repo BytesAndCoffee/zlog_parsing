@@ -1,35 +1,34 @@
 # Project Setup
 
-This document provides detailed instructions for setting up the project, including environment variables and dependencies.
+These instructions cover setting up the project for local development.
 
 ## Prerequisites
 
-Before you begin, ensure you have met the following requirements:
-- You have installed Python >= 3.11
-- You have installed `pip`, the Python package installer
+- Python 3.11+
+- `pip` for installing dependencies
 
 ## Installation
 
-1. **Clone the repository:**
+1. **Clone the repository**
    ```sh
    git clone https://github.com/BytesAndCoffee/zlog_parsing.git
    cd zlog_parsing
    ```
 
-2. **Create a virtual environment:**
+2. **Create and activate a virtual environment**
    ```sh
    python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   source venv/bin/activate  # On Windows use venv\Scripts\activate
    ```
 
-3. **Install the dependencies:**
+3. **Install dependencies**
    ```sh
    pip install -r requirements.txt
    ```
 
 ## Environment Variables
 
-The project uses environment variables configured in a `.env` file for database connection. Create a `.env` file in the root directory of the project with the following content:
+Copy `.env.example` to `.env` and provide your database information:
 
 ```sh
 DB_HOST=your_database_host
@@ -38,15 +37,22 @@ DB_PASSWORD=your_database_password
 DB_NAME=your_database_name
 ```
 
-Replace `your_database_host`, `your_database_username`, `your_database_password`, and `your_database_name` with your actual database credentials.
-
 ## Running the Project
 
-After setting up the environment variables and installing the dependencies, you can run the main scripts of the project:
+Start the queue and parser scripts:
 
 ```sh
 python parse_logs.py &
 python zlog_queue.py &
 ```
 
-This will start the log parsing and queue management processes.
+Alternatively run `main.sh` which launches both scripts.
+
+## Docker
+
+The repository includes a Dockerfile (`main.dockerfile`). Build and run with:
+
+```sh
+docker build -f main.dockerfile -t zlog_parsing .
+docker run -d zlog_parsing
+```

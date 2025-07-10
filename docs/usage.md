@@ -1,18 +1,27 @@
 # Usage
 
-This document provides detailed instructions for using the project, including running scripts and expected behavior.
+This guide describes how to run the scripts and what they do.
 
 ## Running the Scripts
 
-The main scripts in this project are:
+The project consists of three main Python files:
 
-- `psconnect.py`: This script provides the connection and interaction with MySQL (Specifically Planetscale in this project)
-- `parse_logs.py`: This script parses logs and updates the database accordingly.
-- `zlog_queue.py`: This script manages a queue of logs, marking them as processed and copying new logs.
+- `psconnect.py` – utilities for connecting to the MySQL database
+- `parse_logs.py` – processes entries from `logs_queue` and writes them to other tables
+- `zlog_queue.py` – copies new logs from `logs` into `logs_queue`
+
+Ensure you have configured your `.env` file before running the scripts. The parser and queue can be launched together with:
+
+```sh
+python parse_logs.py &
+python zlog_queue.py &
+```
+
+You can also run `main.sh` which simply executes both commands.
 
 ## Environment Variables
 
-The project uses environment variables configured in a `.env` file for database connection. The `.env` file should be in the following format:
+The `.env` file should define the following variables:
 
 ```
 DB_HOST=host
@@ -23,23 +32,11 @@ DB_NAME=database
 
 ## Dependencies
 
-The project dependencies are listed in the `requirements.txt` file. You can install them using the following command:
-
-```sh
-pip install -r requirements.txt
-```
-
-## Running the Scripts
-
-You can run the scripts as follows:
-
-```sh
-python parse_logs.py &
-python zlog_queue.py &
-```
+Install dependencies listed in `requirements.txt` using `pip install -r requirements.txt`.
 
 ## Expected Behavior
 
-- `psconnect.py`: Establishes a connection to the MySQL database and provides functions for interacting with the database.
-- `parse_logs.py`: Parses logs from the `logs_queue` table and updates the `push` and `event_log` tables accordingly.
-- `zlog_queue.py`: Manages a queue of logs, marking them as processed and copying new logs from the `logs` table to the `logs_queue` table.
+- `psconnect.py` provides database helper functions.
+- `parse_logs.py` reads logs from `logs_queue`, applies hotword rules and writes matching entries to `push` and `event_log`.
+- `zlog_queue.py` monitors the `logs` table and enqueues new log lines for processing.
+- `rules.py` contains helper functions for validating and evaluating the hotword rules stored for each user.
