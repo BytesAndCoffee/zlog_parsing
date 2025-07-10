@@ -1,57 +1,45 @@
 # zlog parsing
 
-This is a Python project that provides utilities for parsing logs and managing a queue of logs. It also includes functionality for connecting to a database and manipulating data.
+This repository contains tools for parsing IRC logs and storing them in a MySQL database. It also provides helper scripts for queueing logs and interacting with the database.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+Clone the repository and install the dependencies listed in `requirements.txt`. Python 3.11 or later is required.
 
-### Requirements
+```sh
+pip install -r requirements.txt
+```
 
-- Python >= 3.11
-- PyMySQL
-- dotenv
+Copy `.env.example` to `.env` and fill in your database credentials.
 
 ## Usage
 
-The main scripts in this project are:
-- `psconnect.py`: This script provides the connection and interaction with MySQL (Specifically Planetscale in this project)
-- `parse_logs.py`: This script parses logs and updates the database accordingly.
-- `zlog_queue.py`: This script manages a queue of logs, marking them as processed and copying new logs.
-- `.env`: An environment variables file used to configure PyMySQL, in the following format:
-    ```.env
-    DB_HOST=host
-    DB_USERNAME=username
-    DB_PASSWORD=password
-    DB_NAME=databse
-    ```
+The project exposes several scripts:
 
-You can run these scripts as follows:
+- `psconnect.py` – helper functions for database access
+- `parse_logs.py` – reads entries from `logs_queue` and stores them in the main tables
+- `zlog_queue.py` – moves new logs into `logs_queue` so they can be processed
+- `main.sh` – runs the queue and parser scripts together
+
+Run the parser and queue in the background when developing:
 
 ```sh
 python parse_logs.py &
 python zlog_queue.py &
 ```
 
-## Docker Setup
+## Docker
 
-To build and run the Docker container for this project, follow these steps:
+A simple container definition is provided in `main.dockerfile`. Build and run with:
 
-1. **Build the Docker image:**
-   ```sh
-   docker build -t zlog_parsing .
-   ```
-
-2. **Run the Docker container:**
-   ```sh
-   docker run -d zlog_parsing
-   ```
-
-This will start the log parsing and queue management processes inside the Docker container.
+```sh
+docker build -f main.dockerfile -t zlog_parsing .
+docker run -d zlog_parsing
+```
 
 ## Documentation
 
-Comprehensive documentation for the project is available in the `docs` directory. The documentation includes detailed instructions for setup, usage, and descriptions of each module and function.
+Additional documentation and module descriptions can be found in the `docs` directory:
 
 - [Setup Instructions](docs/setup.md)
 - [Usage Instructions](docs/usage.md)
@@ -59,4 +47,4 @@ Comprehensive documentation for the project is available in the `docs` directory
 
 ## License
 
-This project is licensed under the MIT License
+This project is licensed under the MIT License.

@@ -53,3 +53,17 @@ Copies new log entries from the `logs` table to the `logs_queue` table and marks
 
 ### main
 Main function that sets up logging, copies new logs, and marks them as processed in a loop.
+
+## rules.py
+
+### validate_rule
+Checks that a rule dictionary has the proper structure.
+
+### validate_rules
+Applies `validate_rule` to a list of rules.
+
+### match_rule
+Determines whether a log entry matches a given rule.
+
+### fetch_rules
+Retrieves a user's hotword rules from the database.
