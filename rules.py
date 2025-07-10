@@ -90,7 +90,7 @@ def match_rule(rule: Rule, row: Row) -> bool:
     # Finally evaluate match
     if match_cmp not in msg_cmp:
         return False
-
+    logging.debug(f"Rule matched: {rule} for log {row['id']}")
     return True
 
 

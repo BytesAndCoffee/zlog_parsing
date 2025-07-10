@@ -13,6 +13,7 @@ from psconnect import (
 from zlog_queue import get_last_processed_id
 from rules import match_rule, fetch_rules
 
+import json
 import time
 import logging
 from logging.handlers import RotatingFileHandler
@@ -56,6 +57,7 @@ def parse_log(log: Row) -> None:
         for rule in rules:
             if match_rule(rule, log):
                 logging.debug(f"Matched rule for user {recipient}: {rule}")
+                matched_any = True
                 row = {
                     "id": log["id"],
                     "user": log["user"],
@@ -76,10 +78,8 @@ def parse_log(log: Row) -> None:
                     logging.error("Failed to insert log %s into event_log: %s", log["id"], e)
                     if "Duplicate entry" in str(e):
                         logging.debug("Duplicate entry: %s", log["id"])
-                matched_any = True
-                break  # stop at first matching rule for user
     if not matched_any:
-        logging.debug(f"No rule matched for log {log['id']}")
+        logging.debug("No rule matched for log %s\n\n  %s", log["id"], json.dumps(log, indent=2))
 
 
 def fetch_pm_table() -> list[Row]:
