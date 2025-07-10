@@ -76,8 +76,7 @@ When OpenAI Codex generates a PR, ensure it:
 1. Contains only changes relevant to `zlog_parsing-master`
 2. Includes docstring updates for any modified function
 3. Reflects schema changes in `zlog_schema.sql` and/or `schema.py`
-4. Includes example usage in `/docs/usage.md` if applicable
-5. Does not modify external delivery systems like `Telepush`
+4. Includes example usage in `docs/usage.md` if applicable
 
 ## Programmatic Checks for Codex Contributions
 
@@ -90,8 +89,6 @@ black .
 # Check for unused imports and linting
 flake8 .
 
-# Optional: schema consistency validation
-diff zlog_schema.sql <(python schema.py --generate)
 ```
 
 All checks must pass to maintain stability of the parsing system. Codex is expected to prioritize performance, clarity, and resilience in all enhancements.
