@@ -104,7 +104,7 @@ pub async fn select_from(
 ) -> Result<Vec<Log>, DbError> {
     let order = if desc { "DESC" } else { "ASC" };
     let query = format!(
-        "SELECT id, created_at, user, network, `window`, `type`, nick, message FROM {} WHERE id > ? ORDER BY id {}",
+        "SELECT id, created_at, user, network, `window`, `type`, nick, message FROM {} WHERE id > ? ORDER BY id {} LIMIT 50",
         table, order
     );
 

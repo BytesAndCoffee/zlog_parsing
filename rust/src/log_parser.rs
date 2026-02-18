@@ -298,28 +298,56 @@ impl LogParser {
             
             tracing::debug!("Processing {} logs from queue", logs.len());
             
-            // Collect log IDs for batch deletion
-            let mut processed_ids = Vec::new();
+            // Process logs concurrently using tokio tasks
+            let mut tasks = Vec::new();
             
-            // Process each log
             for log in logs {
-                // Update last_processed_id
-                last_processed_id = log.id;
+                // Clone necessary data for the task
+                let pool = self.pool.clone();
+                let user_rules = self.user_rules.clone();
+                let log_clone = log.clone();
                 
-                // Process the log
-                match self.parse_log(&log).await {
-                    Ok(()) => {
-                        tracing::trace!("Successfully processed log id={}", log.id);
-                        processed_ids.push(log.id);
+                // Spawn a task to process this log
+                let task = tokio::spawn(async move {
+                    // Process the log
+                    let result = Self::process_log_static(&pool, &user_rules, &log_clone).await;
+                    (log_clone.id, result)
+                });
+                
+                tasks.push(task);
+            }
+            
+            // Wait for all tasks to complete and collect results
+            let mut processed_ids = Vec::new();
+            let mut max_id = last_processed_id;
+            
+            for task in tasks {
+                match task.await {
+                    Ok((log_id, result)) => {
+                        match result {
+                            Ok(()) => {
+                                tracing::trace!("Successfully processed log id={}", log_id);
+                                processed_ids.push(log_id);
+                                if log_id > max_id {
+                                    max_id = log_id;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to process log id={}: {}. Continuing with next log.",
+                                    log_id,
+                                    e
+                                );
+                                // Still add to processed_ids to remove from queue
+                                processed_ids.push(log_id);
+                                if log_id > max_id {
+                                    max_id = log_id;
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "Failed to process log id={}: {}. Continuing with next log.",
-                            log.id,
-                            e
-                        );
-                        // Still add to processed_ids to remove from queue
-                        processed_ids.push(log.id);
+                        tracing::error!("Task panicked: {}", e);
                     }
                 }
                 
@@ -347,6 +375,9 @@ impl LogParser {
                     }
                 }
             }
+            
+            // Update last_processed_id to the highest id we processed
+            last_processed_id = max_id;
             
             // Batch delete all processed logs from logs_queue
             if !processed_ids.is_empty() {
@@ -391,6 +422,21 @@ impl LogParser {
     /// - 3.5: Handle duplicate entry errors gracefully
     /// - 9.2: Track PMs for all logs
     async fn parse_log(&mut self, log: &crate::db::models::Log) -> Result<(), LogParserError> {
+        Self::process_log_static(&self.pool, &self.user_rules, log).await?;
+        
+        // Track PM if applicable
+        self.maybe_track_pm(log).await?;
+        
+        Ok(())
+    }
+    
+    /// Static method to process a log without needing mutable self
+    /// This allows concurrent processing via tokio::spawn
+    async fn process_log_static(
+        pool: &MySqlPool,
+        user_rules: &HashMap<String, Vec<Rule>>,
+        log: &crate::db::models::Log,
+    ) -> Result<(), LogParserError> {
         use crate::rules::matching::match_rule;
         use crate::db::operations::insert_into;
         use crate::db::models::LogWithRecipient;
@@ -406,7 +452,7 @@ impl LogParser {
         }
         
         // Evaluate log against all user rules
-        for (user, rules) in &self.user_rules {
+        for (user, rules) in user_rules {
             for rule in rules {
                 if match_rule(rule, log) {
                     tracing::debug!(
@@ -428,7 +474,7 @@ impl LogParser {
                     };
                     
                     // Insert into push table
-                    match insert_into(&self.pool, &log_with_recipient, "push").await {
+                    match insert_into(pool, &log_with_recipient, "push").await {
                         Ok(()) => {
                             tracing::debug!(
                                 "Inserted log id={} into push table for user {}",
@@ -457,7 +503,7 @@ impl LogParser {
                     }
                     
                     // Insert into event_log table
-                    match insert_into(&self.pool, &log_with_recipient, "event_log").await {
+                    match insert_into(pool, &log_with_recipient, "event_log").await {
                         Ok(()) => {
                             tracing::debug!(
                                 "Inserted log id={} into event_log table for user {}",
@@ -487,9 +533,6 @@ impl LogParser {
                 }
             }
         }
-        
-        // Track PM if applicable
-        self.maybe_track_pm(log).await?;
         
         Ok(())
     }
