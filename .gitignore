@@ -1,2 +1,9 @@
 .env
 __pycache__
+
+# Rust
+rust/target/
+rust/Cargo.lock
+rust/logs/
+**/*.rs.bk
+*.pdb

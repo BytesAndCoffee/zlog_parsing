@@ -1,0 +1,8 @@
+# Cross-compilation configuration for x86_64 Linux target
+[target.x86_64-unknown-linux-gnu]
+linker = "x86_64-linux-gnu-gcc"
+
+# Build settings
+[build]
+# Uncomment to set default target
+# target = "x86_64-unknown-linux-gnu"
