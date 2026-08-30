@@ -19,6 +19,7 @@ The project exposes several scripts:
 - `psconnect.py` – helper functions for database access
 - `parse_logs.py` – reads entries from `logs_queue` and stores them in the main tables
 - `zlog_queue.py` – moves new logs into `logs_queue` so they can be processed
+- `catchup_logs.py` – replays an outage range behind live traffic at a configured pace
 - `main.sh` – runs the queue and parser scripts together
 
 Run the parser and queue in the background when developing:
@@ -36,6 +37,20 @@ A simple container definition is provided in `main.dockerfile`. Build and run wi
 docker build -f main.dockerfile -t zlog_parsing .
 docker run -d zlog_parsing
 ```
+
+Production deployments should use `docker compose up -d --build`. The Compose
+definition supplies `.env`, persists the `unless-stopped` policy in Git, and
+enables the worker health check.
+
+## Database sleep recovery
+
+The first worker that detects a database outage sends one out-of-band
+`Database slept` Telegram alert. The live producer checks again hourly. Once
+the database returns, live processing jumps to the current head immediately.
+Rows dated before the recovery timestamp—including late ZNC disk replay—are
+stored in the local durable recovery volume; current-dated rows stay on the
+live path. A secondary worker plays matching historical notifications back
+only while the live push queue is empty.
 ## Filtering Rules
 
 Each user record contains a `hotwords` JSON column storing a **list** of rule objects.

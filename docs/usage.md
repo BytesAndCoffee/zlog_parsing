@@ -9,6 +9,7 @@ The project consists of three main Python files:
 - `psconnect.py` – utilities for connecting to the MySQL database
 - `parse_logs.py` – processes entries from `logs_queue` and writes them to other tables
 - `zlog_queue.py` – copies new logs from `logs` into `logs_queue`
+- `catchup_logs.py` – throttles missed outage matches behind current traffic
 
 Ensure you have configured your `.env` file before running the scripts. The parser and queue can be launched together with:
 
@@ -39,6 +40,11 @@ Install dependencies listed in `requirements.txt` using `pip install -r requirem
 - `psconnect.py` provides database helper functions.
 - `parse_logs.py` reads logs from `logs_queue`, applies hotword rules and writes matching entries to `push` and `event_log`.
 - `zlog_queue.py` monitors the `logs` table and enqueues new log lines for processing.
+- After a database sleep, the producer probes hourly and resumes at the current
+  live head. Late rows dated before recovery are recorded as durable catch-up
+  jobs in the local recovery volume instead of blocking current notifications.
+- The catch-up worker waits for the live `push` queue to drain before replaying
+  another match. `CATCHUP_NOTIFICATION_INTERVAL_SECONDS` controls its pace.
 - `rules.py` contains helper functions for validating and evaluating the hotword rules stored for each user.
 
 ## Filtering Rules

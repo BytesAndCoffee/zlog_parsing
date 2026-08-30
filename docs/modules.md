@@ -54,6 +54,28 @@ Copies new log entries from the `logs` table to the `logs_queue` table and marks
 ### main
 Main function that sets up logging, copies new logs, and marks them as processed in a loop.
 
+On database failure it emits the one-time sleep alert and becomes the recovery
+coordinator. After the hourly probe succeeds, it cuts live processing over to
+the current head. A persisted recovery timestamp keeps classifying late ZNC
+disk replay as catch-up while current-dated rows continue through the live path.
+
+## state_store.py
+
+Persists recovery timestamps and catch-up progress in the Compose-managed
+`zlog-state` volume, so recovery coordination does not depend on MySQL being
+available and requires no production database migration.
+
+## catchup_logs.py
+
+Processes persisted catch-up ranges independently of the primary live path.
+It yields to live notifications whenever the push queue is non-empty and waits
+between matching historical notifications.
+
+## recovery.py
+
+Coordinates the shared outage marker, out-of-band Telegram alerts, stable-head
+detection, and atomic live/catch-up cutover.
+
 ## rules.py
 
 ### validate_rule

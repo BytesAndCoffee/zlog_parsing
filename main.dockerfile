@@ -13,5 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Make the main.sh script executable
 RUN chmod +x main.sh
 
+HEALTHCHECK --interval=1m --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python3", "healthcheck.py"]
+
 # Run the application when the container launches
 CMD ["./main.sh"]

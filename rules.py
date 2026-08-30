@@ -128,25 +128,20 @@ def fetch_rules(conn: Connection, nickname: str) -> list[dict]:
     Assumes 'hotwords' is a JSON column containing a list of rule dicts.
     Returns an empty list if the user is not found or an error occurs.
     """
-    try:
-        user = fetch_user(conn, nickname)
-        if not user:
-            logging.debug(f"User {nickname} not found while fetching rules.")
-            return []
-
-        rules = user.get("hotwords")
-        if isinstance(rules, str):
-            try:
-                rules = json.loads(rules)
-            except json.JSONDecodeError as e:
-                logging.error(f"Hotwords for {nickname} could not be decoded: {e}")
-                return []
-
-        if isinstance(rules, list):
-            return rules
-        else:
-            logging.error(f"Hotwords for {nickname} are not a list after parsing: {rules}")
-            return []
-    except Exception as e:
-        logging.error(f"Failed to fetch rules for {nickname}: {e}")
+    user = fetch_user(conn, nickname)
+    if not user:
+        logging.debug(f"User {nickname} not found while fetching rules.")
         return []
+
+    rules = user.get("hotwords")
+    if isinstance(rules, str):
+        try:
+            rules = json.loads(rules)
+        except json.JSONDecodeError as e:
+            logging.error(f"Hotwords for {nickname} could not be decoded: {e}")
+            return []
+
+    if isinstance(rules, list):
+        return rules
+    logging.error(f"Hotwords for {nickname} are not a list after parsing: {rules}")
+    return []

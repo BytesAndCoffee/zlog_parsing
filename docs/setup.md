@@ -35,7 +35,15 @@ DB_HOST=your_database_host
 DB_USERNAME=your_database_username
 DB_PASSWORD=your_database_password
 DB_NAME=your_database_name
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
 ```
+
+The Telegram values are used only for operational database sleep/wake alerts.
+Keep `.env` out of Git and rotate any token that appears in application logs.
+
+Compose creates the `zlog-state` volume automatically. It stores the outage
+marker, recovery timestamp, and durable catch-up jobs independently of MySQL.
 
 ## Running the Project
 
@@ -47,6 +55,12 @@ python zlog_queue.py &
 ```
 
 Alternatively run `main.sh` which launches both scripts.
+
+For production, use:
+
+```sh
+docker compose up -d --build
+```
 
 ## Docker
 
