@@ -1,11 +1,14 @@
 #!/home/michael/.pyenv/shims/python
 # psconnect.py
 
-import os, pymysql, pymysql.cursors
-from typing import Optional, Union, Any
-from datetime import datetime
-from dotenv import load_dotenv
+import os
 import logging
+from datetime import datetime
+from typing import Any, Optional, Union
+
+import pymysql
+import pymysql.cursors
+from dotenv import load_dotenv
 
 from pymysql.cursors import Cursor
 
@@ -103,14 +106,18 @@ def get_db_connection() -> Connection:
     """
     try:
         # Connect to the database using environment variables
+        ssl_options = None
+        if os.getenv("DB_SSL_DISABLED", "false").lower() not in ("1", "true", "yes"):
+            ssl_options = {"ca": "/etc/ssl/cert.pem"}
         conn = pymysql.connect(
             host=os.getenv("DB_HOST"),
+            port=int(os.getenv("DB_PORT", "3306")),
             user=os.getenv("DB_USERNAME"),
             password=os.getenv("DB_PASSWORD"),
-            db=os.getenv("DB_NAME"),
+            database=os.getenv("DB_NAME"),
             autocommit=True,
-            ssl={"ca": "/etc/ssl/cert.pem"},
-            ssl_verify_identity=True,
+            ssl=ssl_options,
+            ssl_verify_identity=ssl_options is not None,
             cursorclass=pymysql.cursors.DictCursor
         )
         return conn
@@ -188,6 +195,18 @@ def insert_into(conn: pymysql.Connection, row: Row, table: str) -> None:
         raise e
 
 
+def insert_ignore_into(conn: pymysql.Connection, row: Row, table: str) -> bool:
+    """Insert a row idempotently and return whether a row was created."""
+    if not validate_schema(row, table):
+        raise ValueError("Invalid schema")
+    cols = ', '.join(f'`{col}`' for col in row.keys())
+    vals = ', '.join(f'%({col})s' for col in row.keys())
+    sql = f'INSERT IGNORE INTO `{table}` ({cols}) VALUES ({vals})'
+    with conn.cursor() as cursor:
+        cursor.execute(sql, row)
+        return cursor.rowcount == 1
+
+
 def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
     """
     Replaces a row in a specified table in the database.
@@ -207,22 +226,38 @@ def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
         # Rollback the transaction in case of an error
         conn.rollback()
         logging.error(f"Error replacing into {table}: {e}")
+        raise
 
 
-def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc: bool = False) -> Optional[list[dict]]:
+def select_from(
+    conn: pymysql.Connection,
+    table: str,
+    base: int = 28000000,
+    desc: bool = False,
+    limit: int = 1000,
+    end: Optional[int] = None,
+) -> list[dict]:
     """
     Selects rows from a specified table in the database where the id is greater than a base value.
     Returns a list of dictionaries representing the selected rows.
     """
-    try:
-        # Execute the select statement
-        cursor: Cursor | Any
-        with conn.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
-            return cursor.fetchall()
-    except pymysql.MySQLError as e:
-        logging.error(f"Error selecting from {table}: {e}")
-        return None
+    if table not in table_schemas:
+        raise ValueError(f"Unknown table: {table}")
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    end_clause = " AND id <= %s" if end is not None else ""
+    sql = (
+        f"SELECT * FROM `{table}` WHERE id > %s{end_clause} "
+        f"ORDER BY id {'DESC' if desc else 'ASC'} LIMIT %s"
+    )
+    params = [base]
+    if end is not None:
+        params.append(end)
+    params.append(limit)
+    cursor: Cursor | Any
+    with conn.cursor() as cursor:
+        cursor.execute(sql, params)
+        return cursor.fetchall()
 
 
 def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
@@ -244,15 +279,8 @@ def delete_from(conn: pymysql.Connection, table: str, conditions: dict) -> None:
 
     sql = f"DELETE FROM `{table}` WHERE {where_clause}"
 
-    try:
-        # Execute the delete statement
-        with conn.cursor() as cursor:
-            cursor.execute(sql, params)
-            conn.commit()
-    except pymysql.MySQLError as e:
-        # Rollback the transaction in case of an error
-        conn.rollback()
-        logging.error(f"Error deleting from {table}: {e}")
+    with conn.cursor() as cursor:
+        cursor.execute(sql, params)
 
 
 def fetch_users(conn: pymysql.Connection) -> list[str]:
@@ -260,29 +288,18 @@ def fetch_users(conn: pymysql.Connection) -> list[str]:
     Fetches all user nicknames from the 'users' table.
     Returns a list of nicknames.
     """
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT nickname FROM users")
-            # Fetch all nicknames from the users table
-            rows: list[dict[str, str]] = cursor.fetchall()
-            if not rows:
-                logging.debug("No users found in the database.")
-                return []
-            return [row['nickname'] for row in rows]
-    except Exception as e:
-        logging.error(f"Failed to fetch users: {e}")
-        return []
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT nickname FROM users")
+        rows: list[dict[str, str]] = cursor.fetchall()
+        if not rows:
+            logging.debug("No users found in the database.")
+            return []
+        return [row['nickname'] for row in rows]
 
 def fetch_user(conn: pymysql.Connection, nickname: str) -> Optional[dict]:
     """
     Fetches the full user record from the 'users' table by nickname.
     """
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM users WHERE nickname = %s", (nickname,))
-            return cursor.fetchone()
-    except Exception as e:
-        logging.error(f"Failed to fetch user {nickname}: {e}")
-        return None
-
-
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE nickname = %s", (nickname,))
+        return cursor.fetchone()

@@ -1,166 +1,96 @@
-#!/home/michael/.pyenv/shims/python
-# parse_logs.py
+#!/usr/bin/env python3
+"""Primary worker for current/live notification traffic."""
 
+import logging
+import time
+from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+import pymysql
+
+from processing import load_user_rules, route_log
 from psconnect import (
-    get_db_connection,
-    insert_into,
-    select_from,
-    delete_from,
     Connection,
     Row,
-    fetch_users
+    delete_from,
+    get_db_connection,
+    select_from,
 )
-from zlog_queue import get_last_processed_id
-from rules import match_rule, fetch_rules, validate_rules
-
-import json
-import time
-import logging
-from logging.handlers import RotatingFileHandler
-from datetime import datetime
-
-# Global shared state
-conn: Connection
-users: list[str]
-user_rules: dict[str, list[dict]]
+from recovery import mark_database_sleeping, wait_for_recovery_gate
+from settings import QUEUE_BATCH_SIZE
 
 
-def serialize_log_safe(log: dict) -> str:
-    return json.dumps(log, default=lambda o: o.isoformat() if isinstance(o, datetime) else str(o))
-
-
-def setup_logging() -> None:
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-    error_handler = RotatingFileHandler('error.log', maxBytes=10000, backupCount=5)
+def setup_logging() -> logging.Logger:
+    logger = logging.getLogger("live-parser")
+    logger.setLevel(logging.INFO)
+    error_handler = RotatingFileHandler("error.log", maxBytes=1_000_000, backupCount=5)
     error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-
-    debug_handler = RotatingFileHandler('debug.log', maxBytes=1000000, backupCount=10)
-    debug_handler.setLevel(logging.DEBUG)
-    debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-
+    debug_handler = RotatingFileHandler("debug.log", maxBytes=1_000_000, backupCount=10)
+    debug_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    error_handler.setFormatter(formatter)
+    debug_handler.setFormatter(formatter)
     logger.addHandler(error_handler)
     logger.addHandler(debug_handler)
+    return logger
 
 
-def parse_log(log: Row) -> None:
-    if log["type"] not in ["msg", "action"]:
-        logging.debug(f"Skipping log {log['id']} due to unsupported type: {log['type']}")
-        return
-
-    matched_any = False
-
-    for recipient, rules in user_rules.items():
-        for rule in rules:
-            logging.debug(f"Evaluating rule for {recipient} on log {log['id']}: {json.dumps(rule)}")
-            if match_rule(rule, log):
-                logging.debug(f"Rule matched for user {recipient} on log {log['id']}")
-                matched_any = True
-                row = {
-                    "id": log["id"],
-                    "user": log["user"],
-                    "network": log["network"],
-                    "window": log["window"],
-                    "type": log["type"],
-                    "nick": log["nick"],
-                    "message": log["message"],
-                    "recipient": recipient
-                }
-                try:
-                    insert_into(conn, row, 'push')
-                except Exception as e:
-                    logging.error("Failed to insert log %s into push: %s", log["id"], e)
-                try:
-                    insert_into(conn, row, 'event_log')
-                except Exception as e:
-                    logging.error("Failed to insert log %s into event_log: %s", log["id"], e)
-                    if "Duplicate entry" in str(e):
-                        logging.debug("Duplicate entry: %s", log["id"])
-    if not matched_any:
-        logging.debug("No rule matched for log %s", serialize_log_safe(log))
+def fetch_pm_table(conn: Connection) -> list[Row]:
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM pm_table")
+        return cursor.fetchall()
 
 
-def fetch_pm_table() -> list[Row]:
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM pm_table")
-            return cursor.fetchall()
-    except Exception as e:
-        logging.error("Failed to fetch pm_table: %s", e)
-        return []
-
-
-def maybe_track_pm(log: Row, pm_cache: set[tuple[str, str]]) -> None:
-    if log["window"] == log["nick"] and not log["window"].startswith('#'):
-        key = (log["window"], log["nick"])
+def maybe_track_pm(conn: Connection, log: Row, pm_cache: set[tuple[str, str]]) -> None:
+    if log["window"] == log["nick"] and not str(log["window"]).startswith("#"):
+        key = (str(log["window"]), str(log["nick"]))
         if key not in pm_cache:
-            try:
-                insert_into(conn, log, "pm_table")
-                pm_cache.add(key)
-                logging.debug(f"Tracked new PM: {key}")
-            except Exception as e:
-                logging.error("Failed to insert log %s into pm_table: %s", log["id"], e)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO pm_table (`window`, nick) VALUES (%s, %s)",
+                    key,
+                )
+            pm_cache.add(key)
+
+
+def process_session(conn: Connection, logger: logging.Logger) -> None:
+    pm_cache = {(str(row["window"]), str(row["nick"])) for row in fetch_pm_table(conn)}
+    user_rules = load_user_rules(conn)
+    processed_batches = 0
+
+    while True:
+        logs = select_from(conn, "logs_queue", base=0, limit=QUEUE_BATCH_SIZE)
+        if not logs:
+            time.sleep(1)
+            continue
+        for log in logs:
+            route_log(conn, user_rules, log)
+            maybe_track_pm(conn, log, pm_cache)
+            delete_from(conn, "logs_queue", {"id": log["id"]})
+            logger.info("Processed live log %s", log["id"])
+        processed_batches += 1
+        if processed_batches % 100 == 0:
+            user_rules = load_user_rules(conn)
 
 
 def main() -> None:
-    setup_logging()
-    try:
-        global conn, users, user_rules
-        conn = get_db_connection()
-
-        pm_cache: set[tuple[str, str]] = set(
-            (row["window"], row["nick"]) for row in fetch_pm_table()
-        )
-
-        last_processed_id = get_last_processed_id(conn) or 28000000
-
-        users = fetch_users(conn)
-        logging.debug(f"Fetched users: {users}")
-        user_rules = {}
-
-        for user in users:
-            rules = fetch_rules(conn, user)
-            logging.debug(f"Rules loaded for {user}: {json.dumps(rules, indent=2)}")
-            if validate_rules(rules):
-                user_rules[user] = rules
-            else:
-                logging.warning(f"Rules for {user} failed validation")
-        count: int = 0
-        while True:
-            logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
-            if not logs:
-                time.sleep(1)
-                continue
-
-            for log in logs:
-                parse_log(log)
-                maybe_track_pm(log, pm_cache)
-                try:
-                    delete_from(conn, 'logs_queue', {"id": log["id"]})
-                except Exception as e:
-                    logging.error("Failed to delete log %s from logs_queue: %s", log["id"], e)
-                print(f"Processed log {log['id']}")
-                last_processed_id = log["id"]
-            if count % 100 == 99:
-                logging.debug(f"Processed {count + 1} logs, updating users and rules")
-                users = fetch_users(conn)
-                logging.debug(f"Fetched users: {users}")
-                user_rules = {}
-
-                for user in users:
-                    rules = fetch_rules(conn, user)
-                    logging.debug(f"Rules loaded for {user}: {json.dumps(rules, indent=2)}")
-                    if validate_rules(rules):
-                        user_rules[user] = rules
-                    else:
-                        logging.warning(f"Rules for {user} failed validation")
-            count += 1
-
-    except Exception as e:
-        logging.error("An error occurred: %s", e)
-        print(f"An error occurred: {e}")
+    logger = setup_logging()
+    conn: Optional[Connection] = None
+    while True:
+        try:
+            wait_for_recovery_gate()
+            conn = get_db_connection()
+            process_session(conn, logger)
+        except pymysql.MySQLError as exc:
+            logger.error(
+                "Live parser paused for database outage: %s", type(exc).__name__
+            )
+            mark_database_sleeping("live-parser")
+            wait_for_recovery_gate()
+        finally:
+            if conn:
+                conn.close()
+                conn = None
 
 
 if __name__ == "__main__":
