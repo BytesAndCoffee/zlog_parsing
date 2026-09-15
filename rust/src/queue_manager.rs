@@ -89,8 +89,35 @@ pub async fn copy_new_logs(
                 }
             }
             Err(e) => {
-                // Log error but continue
-                tracing::error!("Failed to insert log {} into logs_queue: {}", log_id, e);
+                // A duplicate means another queue-manager pass already copied
+                // this log. Treat it as successful so the checkpoint advances
+                // instead of retrying the same row forever.
+                let duplicate = matches!(
+                    &e,
+                    DbError::Sqlx(sqlx::Error::Database(db_err))
+                        if db_err.code().as_deref() == Some("1062")
+                );
+                if duplicate {
+                    match mark_as_processed(pool, log_id).await {
+                        Ok(_) => {
+                            highest_id = log_id;
+                            tracing::debug!(
+                                "Log {} already exists in logs_queue; advanced checkpoint",
+                                log_id
+                            );
+                        }
+                        Err(track_err) => {
+                            tracing::error!(
+                                "Failed to update logs_id_track for duplicate log {}: {}",
+                                log_id,
+                                track_err
+                            );
+                        }
+                    }
+                } else {
+                    // Log unexpected errors but continue processing the batch.
+                    tracing::error!("Failed to insert log {} into logs_queue: {}", log_id, e);
+                }
             }
         }
     }
