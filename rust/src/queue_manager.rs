@@ -95,8 +95,7 @@ pub async fn copy_new_logs(
                 let duplicate = matches!(
                     &e,
                     DbError::Sqlx(sqlx::Error::Database(db_err))
-                        if db_err.code().as_deref() == Some("23000")
-                            && db_err.message().contains("Duplicate entry")
+                        if db_err.code().as_deref() == Some("1062")
                 );
                 if duplicate {
                     match mark_as_processed(pool, log_id).await {
