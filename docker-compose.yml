@@ -1,0 +1,15 @@
+services:
+  zlog-parser:
+    build:
+      context: .
+      dockerfile: main.dockerfile
+    image: zlog_parsing:latest
+    container_name: zlog_parser_container
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - zlog-state:/var/lib/zlog
+
+volumes:
+  zlog-state:

@@ -1,101 +1,116 @@
-#!/home/michael/.pyenv/shims/python
-# zlog_queue.py
+#!/usr/bin/env python3
+"""Live-head producer with database sleep recovery."""
 
-import time
-from typing import Optional
-from psconnect import get_db_connection, insert_into, replace_into, select_from, Connection
 import logging
+import time
 from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+import pymysql
+
+from psconnect import Connection, get_db_connection, select_from
+from recovery import database_is_sleeping, mark_database_sleeping, recover_database
+from settings import QUEUE_BATCH_SIZE
+from state_store import add_catchup_job, get_recovery_cutoff
+
 
 def setup_logging() -> logging.Logger:
-    """
-    Sets up logging for the application, creating handlers for different log levels and adding them to the logger.
-    """
-    # Create a logger object
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)  # Set to debug level to capture all messages
-
-    # Create handlers for different log levels
-    error_handler = RotatingFileHandler('error.log', maxBytes=10000, backupCount=5)
+    logger = logging.getLogger("live-producer")
+    logger.setLevel(logging.INFO)
+    error_handler = RotatingFileHandler("error.log", maxBytes=1_000_000, backupCount=5)
     error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-
-    debug_handler = RotatingFileHandler('debug.log', maxBytes=10000, backupCount=5)
-    debug_handler.setLevel(logging.DEBUG)
-    debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-
-    # Add handlers to the logger
+    debug_handler = RotatingFileHandler("debug.log", maxBytes=1_000_000, backupCount=10)
+    debug_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    error_handler.setFormatter(formatter)
+    debug_handler.setFormatter(formatter)
     logger.addHandler(error_handler)
     logger.addHandler(debug_handler)
     return logger
 
 
-# Starting ID is 28000000
 def get_last_processed_id(conn: Connection) -> Optional[int]:
-    """
-    Fetches the last processed ID from the 'logs_id_track' table.
-    """
     with conn.cursor() as cursor:
-        cursor.execute("SELECT tid FROM logs_id_track")
+        cursor.execute("SELECT tid FROM logs_id_track WHERE id = 1")
         result = cursor.fetchone()
-        return result['tid'] if result else None
+        return int(result["tid"]) if result else None
 
 
-def mark_as_processed(conn: Connection, last_id: Optional[int]) -> None:
-    """
-    Marks a log entry as processed by updating the 'logs_id_track' table.
-    """
-    if last_id is not None:
-        replace_into(conn, {'id': 1, 'tid': last_id}, table="logs_id_track")
-
-
-def copy_new_logs(conn: Connection, logger: logging.Logger) -> int:
-    """
-    Copies new log entries from the 'logs' table to the 'logs_queue' table and marks them as processed.
-    """
-    # Initialize or retrieve the last processed/copied ID
+def copy_new_logs(conn: Connection) -> int:
+    """Atomically enqueue one bounded live batch and advance its checkpoint."""
     last_copied_id = get_last_processed_id(conn) or 28000000
-
-    try:
-        # Select new log entries that haven't been processed/copied yet
-        new_logs = select_from(conn, "logs", last_copied_id)
-
-        # Copy the new logs into another table or process them as needed
-        if new_logs:
-            for log in new_logs:
-                try:
-                    insert_into(conn, log, table="logs_queue")
-                    highest_id_in_batch = log['id']
-                    mark_as_processed(conn, highest_id_in_batch)
-                    last_copied_id = highest_id_in_batch
-                except Exception as e:
-                    logger.error(f"An error occurred while copying log {log['id']}: {e}")
-                    raise e
-    except Exception as e:
-        logger.error(f"An error occurred while copying logs: {e}")
-        raise e
-    finally:
+    new_logs = select_from(
+        conn,
+        "logs",
+        base=last_copied_id,
+        limit=QUEUE_BATCH_SIZE,
+    )
+    if not new_logs:
         return last_copied_id
 
-# Example usage
-def main() -> None:
-    """
-    Main function that sets up logging, copies new logs, and marks them as processed in a loop.
-    """
-    logger = setup_logging()
+    recovery_cutoff = get_recovery_cutoff()
+    replay_logs = (
+        [log for log in new_logs if log["created_at"] < recovery_cutoff]
+        if recovery_cutoff
+        else []
+    )
+    live_logs = [log for log in new_logs if log not in replay_logs]
+
+    conn.begin()
     try:
-        conn = get_db_connection()
-        while True:
-            last_copied_id = copy_new_logs(conn, logger)
-            logger.debug(f"Last copied ID: {last_copied_id}")
-            time.sleep(1)  # Adjust the sleep time as necessary
-    except Exception as e:
-        logger.error("An error occurred: %s", e)
-        raise e
-        # Here, you could decide whether to retry the connection, or handle specific error types differently
-    finally:
-        if conn:
-            conn.close()  # Ensure the connection is closed when the script is terminating
+        with conn.cursor() as cursor:
+            for log in live_logs:
+                cursor.execute(
+                    """
+                    INSERT IGNORE INTO logs_queue
+                        (id, created_at, user, network, `window`, type, nick, message)
+                    VALUES
+                        (%(id)s, %(created_at)s, %(user)s, %(network)s,
+                         %(window)s, %(type)s, %(nick)s, %(message)s)
+                    """,
+                    log,
+                )
+            if replay_logs:
+                replay_start = int(replay_logs[0]["id"])
+                replay_end = int(replay_logs[-1]["id"])
+                add_catchup_job(replay_start, replay_end, recovery_cutoff)
+            last_copied_id = int(new_logs[-1]["id"])
+            cursor.execute(
+                "REPLACE INTO logs_id_track (id, tid) VALUES (1, %s)",
+                (last_copied_id,),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return last_copied_id
+
+
+def main() -> None:
+    logger = setup_logging()
+    conn: Optional[Connection] = None
+    while True:
+        try:
+            if database_is_sleeping():
+                if conn:
+                    conn.close()
+                conn = recover_database(logger)
+            elif conn is None:
+                conn = (
+                    recover_database(logger)
+                    if database_is_sleeping()
+                    else get_db_connection()
+                )
+            last_copied_id = copy_new_logs(conn)
+            logger.info("Live checkpoint: %s", last_copied_id)
+            time.sleep(1)
+        except pymysql.MySQLError as exc:
+            logger.error("Database unavailable: %s", type(exc).__name__)
+            mark_database_sleeping("live-producer")
+            if conn:
+                conn.close()
+            conn = recover_database(logger)
+
 
 if __name__ == "__main__":
     main()
