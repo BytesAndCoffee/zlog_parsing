@@ -1,4 +1,4 @@
-"""Runtime settings for live processing and outage recovery."""
+"""Runtime configuration for live processing and outage recovery."""
 
 import os
 

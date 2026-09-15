@@ -23,7 +23,7 @@ These instructions cover setting up the project for local development.
 
 3. **Install dependencies**
    ```sh
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 ## Environment Variables
@@ -47,14 +47,15 @@ marker, recovery timestamp, and durable catch-up jobs independently of MySQL.
 
 ## Running the Project
 
-Start the queue and parser scripts:
+Start the three workers:
 
 ```sh
-python parse_logs.py &
-python zlog_queue.py &
+zlog-producer &
+zlog-live-parser &
+zlog-catchup &
 ```
 
-Alternatively run `main.sh` which launches both scripts.
+Alternatively run `main.sh`, which launches and supervises all three workers.
 
 For production, use:
 

@@ -4,8 +4,8 @@ import json
 import logging
 from typing import Any
 
-from psconnect import Connection, Row, fetch_users, insert_ignore_into
-from rules import fetch_rules, match_rule, validate_rules
+from zlog_parsing.database import Connection, Row, fetch_users, insert_ignore_into
+from zlog_parsing.rules import fetch_rules, match_rule, validate_rules
 
 
 def load_user_rules(conn: Connection) -> dict[str, list[dict[str, Any]]]:

@@ -4,15 +4,15 @@ This Agents.md file provides structured guidance for OpenAI Codex and similar AI
 
 ## Project Structure for OpenAI Codex Navigation
 
-- `parse_logs.py`: Main entry point for log processing
-  - Codex should inspect this to understand how logs are matched to user-defined rules and pushed into downstream queues
-- `rules.py`: Declarative rule engine logic
+- `src/zlog_parsing/workers/live_parser.py`: Main live parsing worker
+  - Inspect this with `routing.py` to understand matching and downstream queues
+- `src/zlog_parsing/rules.py`: Declarative rule engine logic
   - Codex may extend this with new rule types, but must maintain compatibility with JSON rule blobs stored in the `users` table
-- `zlog_queue.py`: Handles message polling and log movement from `logs` to `logs_queue`
+- `src/zlog_parsing/workers/producer.py`: Polls and moves `logs` to `logs_queue`
   - Codex may optimize or modularize this flow
-- `psconnect.py`: Manages database connections and SQL helpers
+- `src/zlog_parsing/database/`: Connections, runtime schemas, and SQL repositories
   - Codex must preserve connection pooling and transaction safety
-- `schema.py`: Embedded table schemas
+- `src/zlog_parsing/database/schemas.py`: Embedded runtime row schemas
   - Codex may extend this when new tables are introduced but should update `zlog_schema.sql` accordingly
 - `zlog_schema.sql`: Authoritative SQL schema for Zlog-related tables
   - Codex should mirror all schema edits here
@@ -37,7 +37,7 @@ This Agents.md file provides structured guidance for OpenAI Codex and similar AI
 
 ### Message Routing and Database Writing
 
-- `parse_logs.py` evaluates logs against rules, and inserts matched entries into the `push` table
+- The live parser evaluates logs against rules and inserts matched entries into `push`
 - Codex must ensure:
   - Logs are only inserted once
   - Duplicates are not reprocessed
@@ -57,17 +57,11 @@ Codex should ensure:
 Codex must ensure the following checks are valid:
 
 ```bash
-# Dry run log parsing
-python parse_logs.py --dry-run
-
-# Validate rule format
-python -m rules validate
-
-# Run unit tests (if added later)
-pytest tests/
+# Run unit tests
+pytest
 ```
 
-Unit test stubs may be added in future `/tests` directory.
+Add focused unit coverage for changed worker, recovery, routing, and rule behavior.
 
 ## Pull Request Guidelines for OpenAI Codex
 

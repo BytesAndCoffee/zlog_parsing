@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zlog-parsing"
+version = "0.1.0"
+description = "Rule-driven ZNC log processing and notification workers"
+requires-python = ">=3.10"
+dependencies = [
+    "PyMySQL>=1.0.2",
+    "python-dotenv>=0.19.1",
+]
+
+[project.scripts]
+zlog-producer = "zlog_parsing.workers.producer:main"
+zlog-live-parser = "zlog_parsing.workers.live_parser:main"
+zlog-catchup = "zlog_parsing.workers.catchup:main"
+zlog-healthcheck = "zlog_parsing.healthcheck:main"
+zlog-schema = "zlog_parsing.database.introspection:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]

@@ -16,13 +16,13 @@ shutdown() {
 
 trap shutdown EXIT INT TERM
 
-python3 zlog_queue.py &
+python3 -m zlog_parsing.workers.producer &
 queue_pid=$!
 
-python3 parse_logs.py &
+python3 -m zlog_parsing.workers.live_parser &
 parser_pid=$!
 
-python3 catchup_logs.py &
+python3 -m zlog_parsing.workers.catchup &
 catchup_pid=$!
 
 # If any worker stops, exit the container so Docker can restart the full set

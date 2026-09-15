@@ -57,5 +57,6 @@ A PM rule triggers when a log entry is a private message (`window` equals `nick`
 
 ## Evaluation Logic
 
-`parse_logs.py` obtains the rule list for each user and evaluates them using `rules.match_rule`. Rules are processed in the order they appear, and the first match causes the log entry to be queued for that user.
-
+The live parser obtains each user's rule list and evaluates it with
+`zlog_parsing.rules.match_rule`. Rules are processed in order, and the first
+match causes the log entry to be queued for that user.
