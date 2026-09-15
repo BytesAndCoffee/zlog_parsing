@@ -4,29 +4,33 @@ This repository contains tools for parsing IRC logs and storing them in a MySQL 
 
 ## Getting Started
 
-Clone the repository and install the dependencies listed in `requirements.txt`. Python 3.11 or later is required.
+Clone the repository and install the package. Python 3.10 or later is required.
 
 ```sh
-pip install -r requirements.txt
+pip install -e .
 ```
 
 Copy `.env.example` to `.env` and fill in your database credentials.
 
 ## Usage
 
-The project exposes several scripts:
+The project installs three independently supervised workers:
 
-- `psconnect.py` – helper functions for database access
-- `parse_logs.py` – reads entries from `logs_queue` and stores them in the main tables
-- `zlog_queue.py` – moves new logs into `logs_queue` so they can be processed
-- `catchup_logs.py` – replays an outage range behind live traffic at a configured pace
+- `zlog-producer` – moves new logs into `logs_queue`
+- `zlog-live-parser` – applies rules and creates notification rows
+- `zlog-catchup` – replays outage ranges behind live traffic
+
+Reusable code lives under `src/zlog_parsing`, grouped into database, recovery,
+rules/routing, and worker modules. The historical top-level Python scripts are
+retained as compatibility entry points.
 - `main.sh` – runs the queue and parser scripts together
 
 Run the parser and queue in the background when developing:
 
 ```sh
-python parse_logs.py &
-python zlog_queue.py &
+zlog-producer &
+zlog-live-parser &
+zlog-catchup &
 ```
 
 ## Docker

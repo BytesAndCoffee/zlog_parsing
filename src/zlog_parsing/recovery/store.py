@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from settings import STATE_DB_PATH
+from zlog_parsing.config import STATE_DB_PATH
 
 
 def connect() -> sqlite3.Connection:
@@ -14,7 +14,8 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.executescript("""
+    conn.executescript(
+        """
         CREATE TABLE IF NOT EXISTS catchup_jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             start_id INTEGER NOT NULL,
@@ -31,7 +32,8 @@ def connect() -> sqlite3.Connection:
             created_before TEXT NOT NULL,
             active INTEGER NOT NULL DEFAULT 1
         );
-        """)
+        """
+    )
     return conn
 
 
@@ -49,11 +51,13 @@ def add_catchup_job(start_id: int, end_id: int, created_before: datetime) -> Non
 
 def get_pending_job() -> Optional[dict]:
     with connect() as conn:
-        row = conn.execute("""
+        row = conn.execute(
+            """
             SELECT * FROM catchup_jobs
             WHERE status IN ('pending', 'running')
             ORDER BY id LIMIT 1
-            """).fetchone()
+            """
+        ).fetchone()
     if not row:
         return None
     job = dict(row)

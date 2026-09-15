@@ -1,95 +1,34 @@
-# Modules Documentation
+# Package layout
 
-## parse_logs.py
+Application code lives under `src/zlog_parsing`. The top-level worker scripts
+remain only as compatibility entry points.
 
-### setup_logging
-Sets up logging for the application, creating handlers for different log levels and adding them to the logger.
+## `zlog_parsing.database`
 
-### parse_log
-Parses a log entry and inserts it into the `push` and `event_log` tables if certain conditions are met.
+- `connection.py` creates configured MySQL connections and defines shared row types.
+- `schemas.py` owns runtime row validation.
+- `queries.py` contains bounded SQL helpers and user repositories.
+- `introspection.py` is the optional schema inspection utility.
 
-### fetch_pm_table
-Fetches all rows from the `pm_table`.
+## `zlog_parsing.rules` and `zlog_parsing.routing`
 
-### pm_update
-Updates the `pm_table` with a new log entry if certain conditions are met.
+`rules` contains pure rule validation and matching behavior. `routing` loads
+rules for recipients and inserts matching rows idempotently into `event_log`
+and `push`.
 
-### main
-Main function that sets up logging, fetches logs from the `logs_queue`, processes them, and updates the `pm_table`.
+## `zlog_parsing.recovery`
 
-## psconnect.py
+`coordinator.py` handles the shared outage marker, one-time notifications,
+hourly probing, and live-head cutover. `store.py` persists recovery timestamps
+and catch-up jobs in the Compose-managed SQLite volume, independently of MySQL.
 
-### get_db_connection
-Establishes a connection to the database using environment variables.
+## `zlog_parsing.workers`
 
-### validate_schema
-Validates a row against the schema of a specified table.
+- `producer.py` advances the live source checkpoint and classifies late replay.
+- `live_parser.py` drains `logs_queue` and routes current notifications.
+- `catchup.py` replays persisted ranges only when live notifications are clear.
 
-### insert_into
-Inserts a row into a specified table after validating the schema.
+These remain separate processes so a stopped worker is visible to Docker and
+cannot be hidden behind another healthy foreground loop.
 
-### replace_into
-Replaces a row in a specified table after validating the schema.
-
-### select_from
-Selects rows from a specified table based on conditions.
-
-### delete_from
-Deletes rows from a specified table based on conditions.
-
-## zlog_queue.py
-
-### setup_logging
-Sets up logging for the application, creating handlers for different log levels and adding them to the logger.
-
-### get_last_processed_id
-Fetches the last processed ID from the `logs_id_track` table.
-
-### mark_as_processed
-Marks a log entry as processed by updating the `logs_id_track` table.
-
-### copy_new_logs
-Copies new log entries from the `logs` table to the `logs_queue` table and marks them as processed.
-
-### main
-Main function that sets up logging, copies new logs, and marks them as processed in a loop.
-
-On database failure it emits the one-time sleep alert and becomes the recovery
-coordinator. After the hourly probe succeeds, it cuts live processing over to
-the current head. A persisted recovery timestamp keeps classifying late ZNC
-disk replay as catch-up while current-dated rows continue through the live path.
-
-## state_store.py
-
-Persists recovery timestamps and catch-up progress in the Compose-managed
-`zlog-state` volume, so recovery coordination does not depend on MySQL being
-available and requires no production database migration.
-
-## catchup_logs.py
-
-Processes persisted catch-up ranges independently of the primary live path.
-It yields to live notifications whenever the push queue is non-empty and waits
-between matching historical notifications.
-
-## recovery.py
-
-Coordinates the shared outage marker, out-of-band Telegram alerts, stable-head
-detection, and atomic live/catch-up cutover.
-
-## rules.py
-
-### validate_rule
-Checks that a rule dictionary has the proper structure.
-
-### validate_rules
-Applies `validate_rule` to a list of rules.
-
-### match_rule
-Determines whether a log entry matches a given rule.
-
-### fetch_rules
-Retrieves a user's hotword rules from the database.
-
-### Rule JSON Structure
-Rules for each user are stored in the `users.hotwords` JSON column as a list of rule objects.
-See [rules.md](rules.md) for a full description of the filtering rule format used by `parse_logs.py`.
+See [rules.md](rules.md) for the stored filtering-rule format.

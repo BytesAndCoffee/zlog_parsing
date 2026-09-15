@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pymysql
 
-import zlog_queue
+from zlog_parsing.workers import producer
 
 
 class Cursor:
@@ -59,22 +59,23 @@ class QueueTests(unittest.TestCase):
                 "message": "m",
             }
         ]
-        with patch.object(
-            zlog_queue, "select_from", return_value=rows
-        ) as select, patch.object(zlog_queue, "get_recovery_cutoff", return_value=None):
-            checkpoint = zlog_queue.copy_new_logs(conn)
+        with (
+            patch.object(producer, "select_from", return_value=rows) as select,
+            patch.object(producer, "get_recovery_cutoff", return_value=None),
+        ):
+            checkpoint = producer.copy_new_logs(conn)
         self.assertEqual(checkpoint, 101)
         self.assertTrue(conn.committed)
         select.assert_called_once_with(
-            conn, "logs", base=100, limit=zlog_queue.QUEUE_BATCH_SIZE
+            conn, "logs", base=100, limit=producer.QUEUE_BATCH_SIZE
         )
 
     def test_database_errors_are_not_swallowed(self):
         conn = Connection()
         failure = pymysql.OperationalError(1105, "database slept")
-        with patch.object(zlog_queue, "select_from", side_effect=failure):
+        with patch.object(producer, "select_from", side_effect=failure):
             with self.assertRaises(pymysql.OperationalError):
-                zlog_queue.copy_new_logs(conn)
+                producer.copy_new_logs(conn)
 
     def test_late_replay_rows_become_catchup_instead_of_live(self):
         conn = Connection()
@@ -101,10 +102,12 @@ class QueueTests(unittest.TestCase):
                 "message": "live",
             },
         ]
-        with patch.object(zlog_queue, "select_from", return_value=rows), patch.object(
-            zlog_queue, "get_recovery_cutoff", return_value=cutoff
-        ), patch.object(zlog_queue, "add_catchup_job") as add_job:
-            zlog_queue.copy_new_logs(conn)
+        with (
+            patch.object(producer, "select_from", return_value=rows),
+            patch.object(producer, "get_recovery_cutoff", return_value=cutoff),
+            patch.object(producer, "add_catchup_job") as add_job,
+        ):
+            producer.copy_new_logs(conn)
         statements = [sql for sql, _params in conn.cursor_value.executed]
         self.assertEqual(
             sum("INSERT IGNORE INTO logs_queue" in sql for sql in statements), 1

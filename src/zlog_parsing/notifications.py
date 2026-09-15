@@ -1,4 +1,4 @@
-"""Out-of-band Telegram notifications that do not depend on MySQL."""
+"""Out-of-band notification delivery."""
 
 import json
 import logging

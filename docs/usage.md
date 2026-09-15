@@ -4,21 +4,21 @@ This guide describes how to run the scripts and what they do.
 
 ## Running the Scripts
 
-The project consists of three main Python files:
+The project installs three worker commands:
 
-- `psconnect.py` – utilities for connecting to the MySQL database
-- `parse_logs.py` – processes entries from `logs_queue` and writes them to other tables
-- `zlog_queue.py` – copies new logs from `logs` into `logs_queue`
-- `catchup_logs.py` – throttles missed outage matches behind current traffic
+- `zlog-producer` – copies new logs from `logs` into `logs_queue`
+- `zlog-live-parser` – processes `logs_queue` and writes routed rows
+- `zlog-catchup` – throttles missed outage matches behind current traffic
 
 Ensure you have configured your `.env` file before running the scripts. The parser and queue can be launched together with:
 
 ```sh
-python parse_logs.py &
-python zlog_queue.py &
+zlog-producer &
+zlog-live-parser &
+zlog-catchup &
 ```
 
-You can also run `main.sh` which simply executes both commands.
+You can also run `main.sh`, which supervises all three commands.
 
 ## Environment Variables
 
@@ -33,19 +33,19 @@ DB_NAME=database
 
 ## Dependencies
 
-Install dependencies listed in `requirements.txt` using `pip install -r requirements.txt`.
+Install the package and its dependencies using `pip install -e .`.
 
 ## Expected Behavior
 
-- `psconnect.py` provides database helper functions.
-- `parse_logs.py` reads logs from `logs_queue`, applies hotword rules and writes matching entries to `push` and `event_log`.
-- `zlog_queue.py` monitors the `logs` table and enqueues new log lines for processing.
+- `zlog_parsing.database` owns connections, row schemas, and SQL repositories.
+- The live parser applies hotword rules and writes matching entries to `push` and `event_log`.
+- The producer monitors `logs` and enqueues new log lines for processing.
 - After a database sleep, the producer probes hourly and resumes at the current
   live head. Late rows dated before recovery are recorded as durable catch-up
   jobs in the local recovery volume instead of blocking current notifications.
 - The catch-up worker waits for the live `push` queue to drain before replaying
   another match. `CATCHUP_NOTIFICATION_INTERVAL_SECONDS` controls its pace.
-- `rules.py` contains helper functions for validating and evaluating the hotword rules stored for each user.
+- `zlog_parsing.rules` validates and evaluates each user's hotword rules.
 
 ## Filtering Rules
 

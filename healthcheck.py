@@ -1,16 +1,13 @@
-"""Container health check for the three long-running workers."""
+#!/usr/bin/env python3
+"""Compatibility entry point for the packaged container health check."""
 
 from pathlib import Path
+import sys
 
-EXPECTED = {"zlog_queue.py", "parse_logs.py", "catchup_logs.py"}
-running = set()
-for command_file in Path("/proc").glob("[0-9]*/cmdline"):
-    try:
-        command = command_file.read_bytes().replace(b"\x00", b" ").decode()
-    except (OSError, UnicodeDecodeError):
-        continue
-    for script in EXPECTED:
-        if script in command:
-            running.add(script)
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-raise SystemExit(0 if running == EXPECTED else 1)
+from zlog_parsing.healthcheck import main  # noqa: E402
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

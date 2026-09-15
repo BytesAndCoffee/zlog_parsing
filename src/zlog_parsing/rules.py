@@ -4,10 +4,11 @@ from typing import Any
 import logging
 import json
 
-from psconnect import fetch_user, Connection
+from zlog_parsing.database import Connection, fetch_user
 
 Rule = dict[str, Any]
 Row = dict[str, Any]
+
 
 def validate_rule(rule: Rule) -> bool:
     """
@@ -40,7 +41,6 @@ def validate_rule(rule: Rule) -> bool:
     return True
 
 
-
 def validate_rules(rules: list[Rule]) -> bool:
     """
     Validates a list of rule dicts using validate_rule().
@@ -62,7 +62,9 @@ def match_rule(rule: Rule, row: Row) -> bool:
         # PM rule: window is the sender and not a channel
         if rule["type"] == "pm":
             is_pm = window == sender and not window.startswith("#")
-            logging.debug(f"PM rule evaluation: window={window}, sender={sender}, result={is_pm}")
+            logging.debug(
+                f"PM rule evaluation: window={window}, sender={sender}, result={is_pm}"
+            )
             return is_pm
 
         # Substring rule matching
@@ -99,18 +101,22 @@ def match_rule(rule: Rule, row: Row) -> bool:
             if key == "contains":
                 condition = val if case_sensitive else val.lower()
                 if condition not in msg_cmp:
-                    logging.debug(f"Rule skipped by only_if.contains (not found): {val}")
+                    logging.debug(
+                        f"Rule skipped by only_if.contains (not found): {val}"
+                    )
                     return False
             else:
                 field = row.get(key, "")
                 field_cmp = field if case_sensitive else field.lower()
                 val_cmp = val if case_sensitive else val.lower()
                 if field_cmp != val_cmp:
-                    logging.debug(f"Rule skipped by only_if[{key}]: {val_cmp} != {field_cmp}")
+                    logging.debug(
+                        f"Rule skipped by only_if[{key}]: {val_cmp} != {field_cmp}"
+                    )
                     return False
 
         # Final substring match
-        if match_cmp in msg_cmp and not match_cmp in nick_cmp:
+        if match_cmp in msg_cmp and match_cmp not in nick_cmp:
             logging.debug(f"Rule matched log {row.get('id')} with match='{match_val}'")
             return True
         else:

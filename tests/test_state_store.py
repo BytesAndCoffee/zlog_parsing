@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
-import state_store
+from zlog_parsing.recovery import store as state_store
 
 
 class StateStoreTests(unittest.TestCase):

@@ -3,16 +3,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import recovery
+from zlog_parsing.recovery import coordinator as recovery
 
 
 class RecoveryTests(unittest.TestCase):
     def test_sleep_notification_is_emitted_once(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = os.path.join(directory, "sleeping")
-            with patch.object(
-                recovery, "DATABASE_SLEEP_STATE_FILE", marker
-            ), patch.object(recovery, "send_telegram", return_value=True) as send:
+            with (
+                patch.object(recovery, "DATABASE_SLEEP_STATE_FILE", marker),
+                patch.object(recovery, "send_telegram", return_value=True) as send,
+            ):
                 self.assertTrue(recovery.mark_database_sleeping("producer"))
                 self.assertFalse(recovery.mark_database_sleeping("parser"))
                 send.assert_called_once_with("Database slept")
