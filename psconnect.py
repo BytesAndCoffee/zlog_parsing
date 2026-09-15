@@ -209,16 +209,35 @@ def replace_into(conn: pymysql.Connection, row: Row, table: str) -> None:
         logging.error(f"Error replacing into {table}: {e}")
 
 
-def select_from(conn: pymysql.Connection, table: str, base: int = 28000000, desc: bool = False) -> Optional[list[dict]]:
+def select_from(
+    conn: pymysql.Connection,
+    table: str,
+    base: int = 28000000,
+    desc: bool = False,
+    limit: Optional[int] = None,
+) -> Optional[list[dict]]:
     """
-    Selects rows from a specified table in the database where the id is greater than a base value.
-    Returns a list of dictionaries representing the selected rows.
+    Selects rows from a specified table where ``id`` is greater than ``base``.
+
+    ``limit`` can be used to bound the result set for polling consumers. Values
+    are passed as query parameters so the cursor can safely reuse the statement
+    with different checkpoints and batch sizes.
     """
     try:
         # Execute the select statement
         cursor: Cursor | Any
+        if limit is not None and limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        order = "DESC" if desc else "ASC"
+        sql = f"SELECT * FROM {table} WHERE id > %s ORDER BY id {order}"
+        params: tuple[int, ...] = (base,)
+        if limit is not None:
+            sql += " LIMIT %s"
+            params += (limit,)
+
         with conn.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM {table} WHERE id > {base} ORDER BY id {'DESC' if desc else 'ASC'}")
+            cursor.execute(sql, params)
             return cursor.fetchall()
     except pymysql.MySQLError as e:
         logging.error(f"Error selecting from {table}: {e}")
@@ -284,5 +303,4 @@ def fetch_user(conn: pymysql.Connection, nickname: str) -> Optional[dict]:
     except Exception as e:
         logging.error(f"Failed to fetch user {nickname}: {e}")
         return None
-
 

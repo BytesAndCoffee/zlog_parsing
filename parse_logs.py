@@ -129,7 +129,12 @@ def main() -> None:
                 logging.warning(f"Rules for {user} failed validation")
         count: int = 0
         while True:
-            logs = select_from(conn, "logs_queue", last_processed_id, desc=False)
+            # Keep queue polling bounded so a backlog cannot be loaded into
+            # memory in one request. The next iteration resumes at the last
+            # processed id.
+            logs = select_from(
+                conn, "logs_queue", last_processed_id, desc=False, limit=100
+            )
             if not logs:
                 time.sleep(1)
                 continue
