@@ -16,7 +16,11 @@ from zlog_parsing.database import (
     select_from,
 )
 from zlog_parsing.recovery import mark_database_sleeping, wait_for_recovery_gate
-from zlog_parsing.config import QUEUE_BATCH_SIZE
+from zlog_parsing.config import (
+    LIVE_QUEUE_MAX_POLL_SECONDS,
+    LIVE_QUEUE_POLL_SECONDS,
+    QUEUE_BATCH_SIZE,
+)
 from zlog_parsing.logging import build_worker_logger
 
 
@@ -44,15 +48,19 @@ def maybe_track_pm(conn: Connection, log: Row, pm_cache: set[tuple[str, str]]) -
 
 
 def process_session(conn: Connection, logger: logging.Logger) -> None:
+    """Process queued logs, backing off polling while the queue is empty."""
     pm_cache = {(str(row["window"]), str(row["nick"])) for row in fetch_pm_table(conn)}
     user_rules = load_user_rules(conn)
     processed_batches = 0
+    poll_seconds = LIVE_QUEUE_POLL_SECONDS
 
     while True:
         logs = select_from(conn, "logs_queue", base=0, limit=QUEUE_BATCH_SIZE)
         if not logs:
-            time.sleep(1)
+            time.sleep(poll_seconds)
+            poll_seconds = min(poll_seconds * 2, LIVE_QUEUE_MAX_POLL_SECONDS)
             continue
+        poll_seconds = LIVE_QUEUE_POLL_SECONDS
         for log in logs:
             route_log(conn, user_rules, log)
             maybe_track_pm(conn, log, pm_cache)
