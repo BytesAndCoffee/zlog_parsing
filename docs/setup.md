@@ -42,6 +42,11 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 The Telegram values are used only for operational database sleep/wake alerts.
 Keep `.env` out of Git and rotate any token that appears in application logs.
 
+The live parser polls an active queue every second. While the queue remains
+empty, it doubles that interval up to five seconds to reduce idle database
+traffic, then resets to one second as soon as work arrives. Override these
+limits with `LIVE_QUEUE_POLL_SECONDS` and `LIVE_QUEUE_MAX_POLL_SECONDS`.
+
 Compose creates the `zlog-state` volume automatically. It stores the outage
 marker, recovery timestamp, and durable catch-up jobs independently of MySQL.
 
